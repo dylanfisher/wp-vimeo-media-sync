@@ -55,6 +55,76 @@ class Vimeo_Media_Sync_Admin {
 	}
 
 	/**
+	 * Register the plugin dashboard page.
+	 *
+	 * @since    1.0.0
+	 */
+	public function add_plugin_admin_menu() {
+
+		add_menu_page(
+			__( 'Vimeo Media Sync', 'vimeo-media-sync' ),
+			__( 'Vimeo Sync', 'vimeo-media-sync' ),
+			'manage_options',
+			$this->plugin_name,
+			array( $this, 'display_plugin_dashboard' ),
+			'dashicons-video-alt3',
+			26
+		);
+
+	}
+
+	/**
+	 * Render an admin notice if no access token is configured.
+	 *
+	 * @since    1.0.0
+	 */
+	public function maybe_render_missing_token_notice() {
+		$screen = function_exists( 'get_current_screen' ) ? get_current_screen() : null;
+		if ( ! $screen || 'toplevel_page_' . $this->plugin_name !== $screen->id ) {
+			return;
+		}
+
+		if ( '' !== $this->get_access_token() ) {
+			return;
+		}
+		?>
+		<div class="notice notice-warning">
+			<p>
+				<?php echo esc_html__( 'Vimeo Media Sync is not configured. Add a personal access token in wp-config.php or as an environment variable.', 'vimeo-media-sync' ); ?>
+			</p>
+		</div>
+		<?php
+	}
+
+	/**
+	 * Retrieve the access token from wp-config.php or the environment.
+	 *
+	 * @since    1.0.0
+	 * @return   string Access token or empty string.
+	 */
+	public function get_access_token() {
+		if ( defined( 'VIMEO_MEDIA_SYNC_ACCESS_TOKEN' ) && VIMEO_MEDIA_SYNC_ACCESS_TOKEN ) {
+			return (string) VIMEO_MEDIA_SYNC_ACCESS_TOKEN;
+		}
+
+		$env_token = getenv( 'VIMEO_MEDIA_SYNC_ACCESS_TOKEN' );
+		if ( false !== $env_token && '' !== $env_token ) {
+			return (string) $env_token;
+		}
+
+		return '';
+	}
+
+	/**
+	 * Render the plugin dashboard page.
+	 *
+	 * @since    1.0.0
+	 */
+	public function display_plugin_dashboard() {
+		require_once plugin_dir_path( __FILE__ ) . 'partials/vimeo-media-sync-admin-display.php';
+	}
+
+	/**
 	 * Register the stylesheets for the admin area.
 	 *
 	 * @since    1.0.0
