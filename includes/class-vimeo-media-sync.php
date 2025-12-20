@@ -117,6 +117,11 @@ class Vimeo_Media_Sync {
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'admin/class-vimeo-media-sync-admin.php';
 
 		/**
+		 * Vimeo API client wrapper.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-vimeo-media-sync-vimeo-client.php';
+
+		/**
 		 * The class responsible for defining all actions that occur in the public-facing
 		 * side of the site.
 		 */
@@ -157,6 +162,8 @@ class Vimeo_Media_Sync {
 		$this->loader->add_action( 'admin_menu', $plugin_admin, 'add_plugin_admin_menu' );
 		$this->loader->add_action( 'admin_notices', $plugin_admin, 'maybe_render_missing_token_notice' );
 		$this->loader->add_action( 'add_attachment', $plugin_admin, 'initialize_video_attachment_meta' );
+		$this->loader->add_action( 'add_attachment', $plugin_admin, 'maybe_upload_video_to_vimeo', 20, 1 );
+		$this->loader->add_action( 'vimeo_media_sync_check_status', $plugin_admin, 'check_vimeo_processing_status' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_styles' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
 

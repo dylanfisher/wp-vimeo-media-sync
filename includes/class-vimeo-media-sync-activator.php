@@ -30,7 +30,7 @@ class Vimeo_Media_Sync_Activator {
 	 * @since    1.0.0
 	 */
 	public static function activate() {
-
+		wp_clear_scheduled_hook( 'vimeo_media_sync_check_status' );
 	}
 
 }
