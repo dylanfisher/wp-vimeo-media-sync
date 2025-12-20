@@ -94,6 +94,34 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	}
 
 	/**
+	 * Create a new Vimeo video with tus upload.
+	 *
+	 * @since    1.0.0
+	 * @param    int    $size File size in bytes.
+	 * @param    string $name Video title.
+	 * @param    string $description Video description.
+	 * @return   array Response data.
+	 */
+	public function create_tus_video( $size, $name, $description = '' ) {
+		$this->log_debug( 'Creating Vimeo tus upload (size: ' . (int) $size . ')' );
+		return $this->request(
+			'POST',
+			'/me/videos',
+			array(
+				'name'        => $name,
+				'description' => $description,
+				'privacy'     => array(
+					'view' => 'unlisted',
+				),
+				'upload'      => array(
+					'approach' => 'tus',
+					'size'     => (int) $size,
+				),
+			)
+		);
+	}
+
+	/**
 	 * Add a video to a project.
 	 *
 	 * @since    1.0.0
@@ -116,6 +144,57 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	public function get_video( $video_uri ) {
 		$this->log_debug( 'Fetching Vimeo video: ' . $video_uri );
 		return $this->request( 'GET', $video_uri );
+	}
+
+	/**
+	 * Retrieve the current tus upload offset.
+	 *
+	 * @since    1.0.0
+	 * @param    string $upload_link Tus upload URL.
+	 * @return   array Response data with offset key.
+	 */
+	public function tus_get_offset( $upload_link ) {
+		$response = $this->tus_request(
+			'HEAD',
+			$upload_link,
+			array(
+				'Tus-Resumable' => '1.0.0',
+			)
+		);
+
+		$offset = 0;
+		if ( $response['success'] ) {
+			$offset = $this->extract_upload_offset( $response['headers'] );
+		}
+
+		$response['offset'] = $offset;
+		return $response;
+	}
+
+	/**
+	 * Send a tus PATCH chunk.
+	 *
+	 * @since    1.0.0
+	 * @param    string $upload_link Tus upload URL.
+	 * @param    string $chunk Binary data.
+	 * @param    int    $offset Upload offset.
+	 * @return   array Response data with offset key.
+	 */
+	public function tus_patch( $upload_link, $chunk, $offset ) {
+		$response = $this->tus_request(
+			'PATCH',
+			$upload_link,
+			array(
+				'Tus-Resumable' => '1.0.0',
+				'Upload-Offset' => (string) (int) $offset,
+				'Content-Type'  => 'application/offset+octet-stream',
+			),
+			$chunk
+		);
+
+		$offset = $this->extract_upload_offset( $response['headers'] );
+		$response['offset'] = $offset;
+		return $response;
 	}
 
 	/**
@@ -175,6 +254,67 @@ class Vimeo_Media_Sync_Vimeo_Client {
 			'body'    => $decoded,
 			'error'   => $status >= 200 && $status < 300 ? '' : wp_remote_retrieve_body( $response ),
 		);
+	}
+
+	/**
+	 * Perform a tus request against a full upload URL.
+	 *
+	 * @since    1.0.0
+	 * @param    string       $method HTTP method.
+	 * @param    string       $url Upload URL.
+	 * @param    array        $headers Request headers.
+	 * @param    string|null  $body Request body.
+	 * @return   array { success: bool, status: int, body: string, headers: array, error: string }
+	 */
+	private function tus_request( $method, $url, $headers = array(), $body = null ) {
+		$args = array(
+			'method'  => $method,
+			'timeout' => 30,
+			'headers' => $headers,
+		);
+
+		if ( null !== $body ) {
+			$args['body'] = $body;
+		}
+
+		$response = wp_remote_request( $url, $args );
+		if ( is_wp_error( $response ) ) {
+			$this->log_debug( 'Tus request error: ' . $response->get_error_message() );
+			return array(
+				'success' => false,
+				'status'  => 0,
+				'body'    => '',
+				'headers' => array(),
+				'error'   => $response->get_error_message(),
+			);
+		}
+
+		$status = (int) wp_remote_retrieve_response_code( $response );
+		return array(
+			'success' => $status >= 200 && $status < 300,
+			'status'  => $status,
+			'body'    => wp_remote_retrieve_body( $response ),
+			'headers' => wp_remote_retrieve_headers( $response ),
+			'error'   => $status >= 200 && $status < 300 ? '' : wp_remote_retrieve_body( $response ),
+		);
+	}
+
+	/**
+	 * Extract upload offset from response headers.
+	 *
+	 * @since    1.0.0
+	 * @param    array $headers Response headers.
+	 * @return   int
+	 */
+	private function extract_upload_offset( $headers ) {
+		if ( isset( $headers['upload-offset'] ) ) {
+			return (int) $headers['upload-offset'];
+		}
+		if ( isset( $headers['Upload-Offset'] ) ) {
+			return (int) $headers['Upload-Offset'];
+		}
+
+		return 0;
 	}
 
 	/**

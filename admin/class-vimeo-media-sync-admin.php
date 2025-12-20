@@ -172,10 +172,17 @@ class Vimeo_Media_Sync_Admin {
 			return;
 		}
 
-		$video_url = wp_get_attachment_url( $post_id );
-		if ( ! $video_url ) {
-			$this->update_vimeo_status( $post_id, 'error', 'Attachment URL not available.' );
-			$this->log_debug( sprintf( 'Attachment URL missing for attachment %d', $post_id ) );
+		$file_path = get_attached_file( $post_id );
+		if ( ! $file_path || ! file_exists( $file_path ) ) {
+			$this->update_vimeo_status( $post_id, 'error', 'Attachment file not available.' );
+			$this->log_debug( sprintf( 'Attachment file missing for attachment %d', $post_id ) );
+			return;
+		}
+
+		$size = filesize( $file_path );
+		if ( ! $size ) {
+			$this->update_vimeo_status( $post_id, 'error', 'Attachment file size not available.' );
+			$this->log_debug( sprintf( 'Attachment file size missing for attachment %d', $post_id ) );
 			return;
 		}
 
@@ -187,12 +194,13 @@ class Vimeo_Media_Sync_Admin {
 			return;
 		}
 
-		update_post_meta( $post_id, '_vimeo_media_sync_upload_source', esc_url_raw( $video_url ) );
-		$this->update_vimeo_status( $post_id, 'queued', '' );
+		update_post_meta( $post_id, '_vimeo_media_sync_upload_source', esc_url_raw( wp_get_attachment_url( $post_id ) ) );
+		update_post_meta( $post_id, '_vimeo_media_sync_upload_size', (int) $size );
+		$this->update_vimeo_status( $post_id, 'uploading', '' );
 
 		$title = get_the_title( $post_id );
 		$description = $post ? $post->post_content : '';
-		$response = $client->create_video_from_url( $video_url, $title, $description );
+		$response = $client->create_tus_video( $size, $title, $description );
 
 		if ( ! $response['success'] ) {
 			$this->update_vimeo_status( $post_id, 'error', $response['error'] );
@@ -203,11 +211,11 @@ class Vimeo_Media_Sync_Admin {
 		$body = $response['body'];
 		$video_uri = isset( $body['uri'] ) ? $body['uri'] : '';
 		$video_id = $this->extract_vimeo_id_from_uri( $video_uri );
-		$status = isset( $body['status'] ) ? $body['status'] : '';
+		$upload_link = isset( $body['upload']['upload_link'] ) ? $body['upload']['upload_link'] : '';
 
-		if ( '' === $video_uri ) {
-			$this->update_vimeo_status( $post_id, 'error', 'Vimeo response missing video URI.' );
-			$this->log_debug( sprintf( 'Vimeo response missing video URI for attachment %d', $post_id ) );
+		if ( '' === $video_uri || '' === $upload_link ) {
+			$this->update_vimeo_status( $post_id, 'error', 'Vimeo response missing upload link.' );
+			$this->log_debug( sprintf( 'Vimeo response missing upload link for attachment %d', $post_id ) );
 			return;
 		}
 
@@ -215,16 +223,27 @@ class Vimeo_Media_Sync_Admin {
 		update_post_meta( $post_id, '_vimeo_media_sync_video_id', $video_id );
 		update_post_meta( $post_id, '_vimeo_media_sync_link', isset( $body['link'] ) ? esc_url_raw( $body['link'] ) : '' );
 		update_post_meta( $post_id, '_vimeo_media_sync_response', $body );
+		update_post_meta( $post_id, '_vimeo_media_sync_upload_link', esc_url_raw( $upload_link ) );
+		update_post_meta( $post_id, '_vimeo_media_sync_upload_offset', 0 );
 
 		$add_to_project = $client->add_video_to_project( $project['uri'], $video_uri );
 		if ( ! $add_to_project['success'] ) {
-			$this->update_vimeo_status( $post_id, $this->map_vimeo_status( $status ), $add_to_project['error'] );
+			$this->update_vimeo_status( $post_id, 'uploading', $add_to_project['error'] );
 			$this->log_debug( sprintf( 'Failed adding video to project for attachment %d: %s', $post_id, $add_to_project['error'] ) );
 			return;
 		}
 
-		$this->update_vimeo_status( $post_id, $this->map_vimeo_status( $status ), '' );
-		$this->log_debug( sprintf( 'Vimeo upload queued for attachment %d (status: %s)', $post_id, $status ) );
+		$upload_result = $this->resume_tus_upload( $post_id, $upload_link, 0, $size );
+		if ( ! $upload_result['success'] ) {
+			$this->update_vimeo_status( $post_id, 'uploading', $upload_result['error'] );
+			return;
+		}
+
+		if ( $upload_result['completed'] ) {
+			$this->update_vimeo_status( $post_id, 'processing', '' );
+		}
+
+		$this->log_debug( sprintf( 'Vimeo tus upload started for attachment %d', $post_id ) );
 		$this->schedule_status_check( $post_id, 2 * MINUTE_IN_SECONDS );
 	}
 
@@ -275,6 +294,27 @@ class Vimeo_Media_Sync_Admin {
 			}
 
 			$this->log_debug( sprintf( 'Checking Vimeo status for attachment %d', $attachment_id ) );
+			$upload_link = get_post_meta( $attachment_id, '_vimeo_media_sync_upload_link', true );
+			$upload_size = (int) get_post_meta( $attachment_id, '_vimeo_media_sync_upload_size', true );
+			$upload_offset = (int) get_post_meta( $attachment_id, '_vimeo_media_sync_upload_offset', true );
+
+			if ( $upload_link && $upload_size > 0 && $upload_offset < $upload_size ) {
+				$upload_result = $this->resume_tus_upload( $attachment_id, $upload_link, $upload_offset, $upload_size );
+				if ( ! $upload_result['success'] ) {
+					$this->update_vimeo_status( $attachment_id, 'uploading', $upload_result['error'] );
+					$this->log_debug( sprintf( 'Tus upload failed for attachment %d: %s', $attachment_id, $upload_result['error'] ) );
+					continue;
+				}
+
+				if ( ! $upload_result['completed'] ) {
+					$this->update_vimeo_status( $attachment_id, 'uploading', '' );
+					$this->schedule_status_check( $attachment_id, 2 * MINUTE_IN_SECONDS );
+					continue;
+				}
+
+				$this->update_vimeo_status( $attachment_id, 'processing', '' );
+			}
+
 			$video_uri = get_post_meta( $attachment_id, '_vimeo_media_sync_uri', true );
 			if ( '' === $video_uri ) {
 				$video_id = get_post_meta( $attachment_id, '_vimeo_media_sync_video_id', true );
@@ -392,6 +432,108 @@ class Vimeo_Media_Sync_Admin {
 	}
 
 	/**
+	 * Resume a tus upload for an attachment.
+	 *
+	 * @since    1.0.0
+	 * @param    int    $post_id Attachment ID.
+	 * @param    string $upload_link Tus upload URL.
+	 * @param    int    $offset Current upload offset.
+	 * @param    int    $size Total file size.
+	 * @return   array { success: bool, completed: bool, offset: int, error: string }
+	 */
+	private function resume_tus_upload( $post_id, $upload_link, $offset, $size ) {
+		$file_path = get_attached_file( $post_id );
+		if ( ! $file_path || ! file_exists( $file_path ) ) {
+			return array(
+				'success'   => false,
+				'completed' => false,
+				'offset'    => $offset,
+				'error'     => 'Attachment file not found.',
+			);
+		}
+
+		$client = $this->get_vimeo_client();
+		$head = $client->tus_get_offset( $upload_link );
+		if ( $head['success'] && (int) $head['offset'] > $offset ) {
+			$offset = (int) $head['offset'];
+			update_post_meta( $post_id, '_vimeo_media_sync_upload_offset', $offset );
+		}
+
+		$handle = fopen( $file_path, 'rb' );
+		if ( ! $handle ) {
+			return array(
+				'success'   => false,
+				'completed' => false,
+				'offset'    => $offset,
+				'error'     => 'Unable to read attachment file.',
+			);
+		}
+
+		$max_chunks = 3;
+		$chunk_size = 5 * MB_IN_BYTES;
+
+		if ( 0 !== fseek( $handle, $offset ) ) {
+			fclose( $handle );
+			return array(
+				'success'   => false,
+				'completed' => false,
+				'offset'    => $offset,
+				'error'     => 'Unable to seek attachment file.',
+			);
+		}
+
+		$chunks_sent = 0;
+		while ( $offset < $size && $chunks_sent < $max_chunks ) {
+			$length = min( $chunk_size, $size - $offset );
+			$chunk = fread( $handle, $length );
+			if ( false === $chunk || '' === $chunk ) {
+				fclose( $handle );
+				return array(
+					'success'   => false,
+					'completed' => false,
+					'offset'    => $offset,
+					'error'     => 'Unable to read attachment chunk.',
+				);
+			}
+
+			$response = $client->tus_patch( $upload_link, $chunk, $offset );
+			if ( ! $response['success'] ) {
+				fclose( $handle );
+				return array(
+					'success'   => false,
+					'completed' => false,
+					'offset'    => $offset,
+					'error'     => $response['error'],
+				);
+			}
+
+			$new_offset = (int) $response['offset'];
+			if ( $new_offset <= $offset ) {
+				fclose( $handle );
+				return array(
+					'success'   => false,
+					'completed' => false,
+					'offset'    => $offset,
+					'error'     => 'Unexpected tus upload offset.',
+				);
+			}
+
+			$offset = $new_offset;
+			update_post_meta( $post_id, '_vimeo_media_sync_upload_offset', $offset );
+			$chunks_sent++;
+		}
+
+		fclose( $handle );
+
+		return array(
+			'success'   => true,
+			'completed' => $offset >= $size,
+			'offset'    => $offset,
+			'error'     => '',
+		);
+	}
+
+	/**
 	 * Determine next poll delay using an aggressive backoff strategy.
 	 *
 	 * @since    1.0.0
@@ -442,6 +584,9 @@ class Vimeo_Media_Sync_Admin {
 			'_vimeo_media_sync_synced_at',
 			'_vimeo_media_sync_error',
 			'_vimeo_media_sync_upload_source',
+			'_vimeo_media_sync_upload_link',
+			'_vimeo_media_sync_upload_offset',
+			'_vimeo_media_sync_upload_size',
 			'_vimeo_media_sync_duration',
 			'_vimeo_media_sync_privacy',
 			'_vimeo_media_sync_files',

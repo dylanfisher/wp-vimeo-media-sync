@@ -26,7 +26,7 @@
 	<p>
 		<?php
 		echo esc_html__(
-			'Required scopes: public, private, create, edit, delete, upload, stats, video files.',
+			'Required scopes: public, private, create, edit, delete, interact, upload, stats, video files.',
 			'vimeo-media-sync'
 		);
 		?>
