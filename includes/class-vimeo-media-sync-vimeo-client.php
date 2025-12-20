@@ -46,6 +46,7 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	 * @return   array|null Project data or null on failure.
 	 */
 	public function get_or_create_project( $name ) {
+		$this->log_debug( 'Looking up Vimeo project: ' . $name );
 		$response = $this->request( 'GET', '/me/projects?query=' . rawurlencode( $name ) );
 		if ( $response['success'] ) {
 			foreach ( $response['body']['data'] as $project ) {
@@ -55,6 +56,7 @@ class Vimeo_Media_Sync_Vimeo_Client {
 			}
 		}
 
+		$this->log_debug( 'Creating Vimeo project: ' . $name );
 		$create = $this->request(
 			'POST',
 			'/me/projects',
@@ -76,6 +78,7 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	 * @return   array Response data.
 	 */
 	public function create_video_from_url( $video_url, $name, $description = '' ) {
+		$this->log_debug( 'Creating Vimeo video from URL: ' . $video_url );
 		return $this->request(
 			'POST',
 			'/me/videos',
@@ -99,6 +102,7 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	 * @return   array Response data.
 	 */
 	public function add_video_to_project( $project_uri, $video_uri ) {
+		$this->log_debug( 'Adding video to project: ' . $project_uri . ' -> ' . $video_uri );
 		return $this->request( 'PUT', $project_uri . $video_uri );
 	}
 
@@ -110,6 +114,7 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	 * @return   array Response data.
 	 */
 	public function get_video( $video_uri ) {
+		$this->log_debug( 'Fetching Vimeo video: ' . $video_uri );
 		return $this->request( 'GET', $video_uri );
 	}
 
@@ -124,6 +129,7 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	 * @return   array { success: bool, status: int, body: array, error: string }
 	 */
 	private function request( $method, $path, $body = null, $headers = array() ) {
+		$this->log_debug( sprintf( 'Vimeo request %s %s', $method, $path ) );
 		$args = array(
 			'method'  => $method,
 			'timeout' => 30,
@@ -147,6 +153,7 @@ class Vimeo_Media_Sync_Vimeo_Client {
 
 		$response = wp_remote_request( $this->base_url . $path, $args );
 		if ( is_wp_error( $response ) ) {
+			$this->log_debug( 'Vimeo request error: ' . $response->get_error_message() );
 			return array(
 				'success' => false,
 				'status'  => 0,
@@ -156,6 +163,7 @@ class Vimeo_Media_Sync_Vimeo_Client {
 		}
 
 		$status = (int) wp_remote_retrieve_response_code( $response );
+		$this->log_debug( sprintf( 'Vimeo response status: %d', $status ) );
 		$decoded = json_decode( wp_remote_retrieve_body( $response ), true );
 		if ( ! is_array( $decoded ) ) {
 			$decoded = array();
@@ -167,5 +175,17 @@ class Vimeo_Media_Sync_Vimeo_Client {
 			'body'    => $decoded,
 			'error'   => $status >= 200 && $status < 300 ? '' : wp_remote_retrieve_body( $response ),
 		);
+	}
+
+	/**
+	 * Log debug output when WP_DEBUG is enabled.
+	 *
+	 * @since    1.0.0
+	 * @param    string $message Debug message.
+	 */
+	private function log_debug( $message ) {
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			error_log( '[Vimeo Media Sync] ' . $message );
+		}
 	}
 }

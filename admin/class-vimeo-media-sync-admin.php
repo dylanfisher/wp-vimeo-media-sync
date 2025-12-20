@@ -135,6 +135,7 @@ class Vimeo_Media_Sync_Admin {
 			return;
 		}
 
+		$this->log_debug( sprintf( 'Initializing Vimeo meta for attachment %d', $post_id ) );
 		foreach ( $this->get_vimeo_meta_keys() as $meta_key ) {
 			if ( ! metadata_exists( 'post', $post_id, $meta_key ) ) {
 				update_post_meta( $post_id, $meta_key, '' );
@@ -154,23 +155,27 @@ class Vimeo_Media_Sync_Admin {
 			return;
 		}
 
+		$this->log_debug( sprintf( 'Starting Vimeo upload for attachment %d', $post_id ) );
 		$this->initialize_video_attachment_meta( $post_id );
 
 		$existing_uri = get_post_meta( $post_id, '_vimeo_media_sync_uri', true );
 		$existing_id  = get_post_meta( $post_id, '_vimeo_media_sync_video_id', true );
 		if ( '' !== $existing_uri || '' !== $existing_id ) {
+			$this->log_debug( sprintf( 'Skipping Vimeo upload for attachment %d (already synced)', $post_id ) );
 			return;
 		}
 
 		$token = $this->get_access_token();
 		if ( '' === $token ) {
 			$this->update_vimeo_status( $post_id, 'missing_token', 'No Vimeo access token configured.' );
+			$this->log_debug( sprintf( 'Missing Vimeo token for attachment %d', $post_id ) );
 			return;
 		}
 
 		$video_url = wp_get_attachment_url( $post_id );
 		if ( ! $video_url ) {
 			$this->update_vimeo_status( $post_id, 'error', 'Attachment URL not available.' );
+			$this->log_debug( sprintf( 'Attachment URL missing for attachment %d', $post_id ) );
 			return;
 		}
 
@@ -178,6 +183,7 @@ class Vimeo_Media_Sync_Admin {
 		$project = $client->get_or_create_project( 'Wordpress' );
 		if ( ! $project || empty( $project['uri'] ) ) {
 			$this->update_vimeo_status( $post_id, 'error', 'Unable to access Vimeo folder.' );
+			$this->log_debug( sprintf( 'Unable to access Vimeo project for attachment %d', $post_id ) );
 			return;
 		}
 
@@ -190,6 +196,7 @@ class Vimeo_Media_Sync_Admin {
 
 		if ( ! $response['success'] ) {
 			$this->update_vimeo_status( $post_id, 'error', $response['error'] );
+			$this->log_debug( sprintf( 'Vimeo upload request failed for attachment %d: %s', $post_id, $response['error'] ) );
 			return;
 		}
 
@@ -200,6 +207,7 @@ class Vimeo_Media_Sync_Admin {
 
 		if ( '' === $video_uri ) {
 			$this->update_vimeo_status( $post_id, 'error', 'Vimeo response missing video URI.' );
+			$this->log_debug( sprintf( 'Vimeo response missing video URI for attachment %d', $post_id ) );
 			return;
 		}
 
@@ -211,10 +219,12 @@ class Vimeo_Media_Sync_Admin {
 		$add_to_project = $client->add_video_to_project( $project['uri'], $video_uri );
 		if ( ! $add_to_project['success'] ) {
 			$this->update_vimeo_status( $post_id, $this->map_vimeo_status( $status ), $add_to_project['error'] );
+			$this->log_debug( sprintf( 'Failed adding video to project for attachment %d: %s', $post_id, $add_to_project['error'] ) );
 			return;
 		}
 
 		$this->update_vimeo_status( $post_id, $this->map_vimeo_status( $status ), '' );
+		$this->log_debug( sprintf( 'Vimeo upload queued for attachment %d (status: %s)', $post_id, $status ) );
 		$this->schedule_status_check( $post_id, 2 * MINUTE_IN_SECONDS );
 	}
 
@@ -227,6 +237,7 @@ class Vimeo_Media_Sync_Admin {
 	public function check_vimeo_processing_status( $post_id = 0 ) {
 		$token = $this->get_access_token();
 		if ( '' === $token ) {
+			$this->log_debug( 'Skipping Vimeo status check (missing token)' );
 			return;
 		}
 
@@ -251,6 +262,7 @@ class Vimeo_Media_Sync_Admin {
 		}
 
 		if ( empty( $attachments ) ) {
+			$this->log_debug( 'No attachments pending Vimeo status checks' );
 			return;
 		}
 
@@ -262,6 +274,7 @@ class Vimeo_Media_Sync_Admin {
 				continue;
 			}
 
+			$this->log_debug( sprintf( 'Checking Vimeo status for attachment %d', $attachment_id ) );
 			$video_uri = get_post_meta( $attachment_id, '_vimeo_media_sync_uri', true );
 			if ( '' === $video_uri ) {
 				$video_id = get_post_meta( $attachment_id, '_vimeo_media_sync_video_id', true );
@@ -275,6 +288,7 @@ class Vimeo_Media_Sync_Admin {
 			$response = $client->get_video( $video_uri );
 			if ( ! $response['success'] ) {
 				$this->update_vimeo_status( $attachment_id, 'error', $response['error'] );
+				$this->log_debug( sprintf( 'Vimeo status request failed for attachment %d: %s', $attachment_id, $response['error'] ) );
 				continue;
 			}
 
@@ -295,6 +309,7 @@ class Vimeo_Media_Sync_Admin {
 
 			$delay = $this->calculate_poll_delay( $attachment, $mapped, $transcode_status );
 			if ( $delay > 0 ) {
+				$this->log_debug( sprintf( 'Scheduling next Vimeo poll for attachment %d in %d seconds', $attachment_id, $delay ) );
 				$this->schedule_status_check( $attachment_id, $delay );
 			}
 		}
@@ -371,6 +386,7 @@ class Vimeo_Media_Sync_Admin {
 		$hook_args = array( (int) $post_id );
 
 		if ( ! wp_next_scheduled( 'vimeo_media_sync_check_status', $hook_args ) ) {
+			$this->log_debug( sprintf( 'Scheduling Vimeo status check for attachment %d', $post_id ) );
 			wp_schedule_single_event( $timestamp, 'vimeo_media_sync_check_status', $hook_args );
 		}
 	}
@@ -460,6 +476,13 @@ class Vimeo_Media_Sync_Admin {
 			update_post_meta( $post_id, '_vimeo_media_sync_status', $status );
 		}
 		update_post_meta( $post_id, '_vimeo_media_sync_error', sanitize_text_field( $error ) );
+		$this->log_debug(
+			sprintf(
+				'Updated Vimeo status for attachment %d: %s',
+				$post_id,
+				$status ? $status : 'unchanged'
+			)
+		);
 	}
 
 	/**
@@ -495,6 +518,18 @@ class Vimeo_Media_Sync_Admin {
 		}
 
 		return '';
+	}
+
+	/**
+	 * Log debug output when WP_DEBUG is enabled.
+	 *
+	 * @since    1.0.0
+	 * @param    string $message Debug message.
+	 */
+	private function log_debug( $message ) {
+		if ( defined( 'WP_DEBUG' ) && WP_DEBUG ) {
+			error_log( '[Vimeo Media Sync] ' . $message );
+		}
 	}
 
 	/**
