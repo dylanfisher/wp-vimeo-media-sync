@@ -156,6 +156,7 @@ class Vimeo_Media_Sync {
 
 		$this->loader->add_action( 'admin_menu', $plugin_admin, 'add_plugin_admin_menu' );
 		$this->loader->add_action( 'admin_notices', $plugin_admin, 'maybe_render_missing_token_notice' );
+		$this->loader->add_action( 'add_attachment', $plugin_admin, 'initialize_video_attachment_meta' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_styles' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
 

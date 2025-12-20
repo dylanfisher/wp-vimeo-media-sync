@@ -116,6 +116,25 @@ class Vimeo_Media_Sync_Admin {
 	}
 
 	/**
+	 * Initialize Vimeo meta keys for new video attachments.
+	 *
+	 * @since    1.0.0
+	 * @param    int $post_id Attachment ID.
+	 */
+	public function initialize_video_attachment_meta( $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $this->is_video_attachment( $post ) ) {
+			return;
+		}
+
+		foreach ( $this->get_vimeo_meta_keys() as $meta_key ) {
+			if ( ! metadata_exists( 'post', $post_id, $meta_key ) ) {
+				update_post_meta( $post_id, $meta_key, '' );
+			}
+		}
+	}
+
+	/**
 	 * Render the plugin dashboard page.
 	 *
 	 * @since    1.0.0
@@ -168,6 +187,39 @@ class Vimeo_Media_Sync_Admin {
 
 		wp_enqueue_script( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'js/vimeo-media-sync-admin.js', array( 'jquery' ), $this->version, false );
 
+	}
+
+	/**
+	 * List Vimeo-related attachment meta keys.
+	 *
+	 * @since    1.0.0
+	 * @return   string[]
+	 */
+	private function get_vimeo_meta_keys() {
+		return array(
+			'_vimeo_media_sync_video_id',
+			'_vimeo_media_sync_uri',
+			'_vimeo_media_sync_link',
+			'_vimeo_media_sync_status',
+			'_vimeo_media_sync_synced_at',
+			'_vimeo_media_sync_error',
+			'_vimeo_media_sync_upload_source',
+			'_vimeo_media_sync_duration',
+			'_vimeo_media_sync_privacy',
+			'_vimeo_media_sync_files',
+			'_vimeo_media_sync_response',
+		);
+	}
+
+	/**
+	 * Check whether the attachment is a video.
+	 *
+	 * @since    1.0.0
+	 * @param    WP_Post|null $post Attachment post.
+	 * @return   bool
+	 */
+	private function is_video_attachment( $post ) {
+		return $post instanceof WP_Post && wp_attachment_is( 'video', $post );
 	}
 
 }
