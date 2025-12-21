@@ -76,7 +76,7 @@ class Vimeo_Media_Sync_Admin {
 			$this->plugin_name,
 			array( $this, 'display_plugin_dashboard' ),
 			'dashicons-video-alt3',
-			26
+			81
 		);
 
 	}
