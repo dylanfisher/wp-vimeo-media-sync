@@ -49,6 +49,79 @@
 		?>
 	</form>
 
+	<h2 class="title"><?php echo esc_html__( 'Sync Status', 'vimeo-media-sync' ); ?></h2>
+	<?php
+	$missing_attachments = $this->get_missing_vimeo_attachments( 10 );
+	if ( isset( $_GET['synced'] ) ) :
+		?>
+		<p>
+			<?php
+			printf(
+				esc_html__( 'Triggered sync for %d attachment(s).', 'vimeo-media-sync' ),
+				(int) $_GET['synced']
+			);
+			?>
+		</p>
+	<?php endif; ?>
+	<?php if ( empty( $missing_attachments ) ) : ?>
+		<p><?php echo esc_html__( 'All video attachments are synced.', 'vimeo-media-sync' ); ?></p>
+	<?php else : ?>
+		<table class="widefat striped vimeo-media-sync-table">
+			<thead>
+				<tr>
+					<th><?php echo esc_html__( 'Video', 'vimeo-media-sync' ); ?></th>
+					<th><?php echo esc_html__( 'Date', 'vimeo-media-sync' ); ?></th>
+					<th><?php echo esc_html__( 'Author', 'vimeo-media-sync' ); ?></th>
+					<th><?php echo esc_html__( 'Last Error', 'vimeo-media-sync' ); ?></th>
+					<th><?php echo esc_html__( 'Actions', 'vimeo-media-sync' ); ?></th>
+				</tr>
+			</thead>
+			<tbody>
+				<?php foreach ( $missing_attachments as $attachment ) : ?>
+					<?php $error = get_post_meta( $attachment->ID, '_vimeo_media_sync_error', true ); ?>
+					<tr>
+						<td>
+							<a href="<?php echo esc_url( get_edit_post_link( $attachment->ID ) ); ?>">
+								<?php echo esc_html( get_the_title( $attachment ) ); ?>
+							</a>
+						</td>
+						<td><?php echo esc_html( get_the_date( '', $attachment ) ); ?></td>
+						<td>
+							<?php
+							$author_id = (int) $attachment->post_author;
+							$author_name = $author_id ? get_the_author_meta( 'display_name', $author_id ) : '';
+							echo esc_html( $author_name );
+							?>
+						</td>
+						<td>
+							<?php if ( $error ) : ?>
+								<span class="vimeo-media-sync-error" title="<?php echo esc_attr( $error ); ?>">
+									<?php echo esc_html( $error ); ?>
+								</span>
+							<?php else : ?>
+								<?php echo esc_html__( '—', 'vimeo-media-sync' ); ?>
+							<?php endif; ?>
+						</td>
+						<td>
+							<button
+								type="button"
+								class="button button-small vimeo-media-sync-row"
+								data-post-id="<?php echo (int) $attachment->ID; ?>"
+							>
+								<?php echo esc_html__( 'Sync', 'vimeo-media-sync' ); ?>
+							</button>
+						</td>
+					</tr>
+				<?php endforeach; ?>
+			</tbody>
+		</table>
+		<p>
+			<button type="button" class="button button-small vimeo-media-sync-all">
+				<?php echo esc_html__( 'Sync missing videos', 'vimeo-media-sync' ); ?>
+			</button>
+		</p>
+	<?php endif; ?>
+
 	<h2 class="title"><?php echo esc_html__( 'Quick Checks', 'vimeo-media-sync' ); ?></h2>
 	<ul>
 		<li><?php echo esc_html__( 'Confirm Vimeo credentials are configured in your environment.', 'vimeo-media-sync' ); ?></li>

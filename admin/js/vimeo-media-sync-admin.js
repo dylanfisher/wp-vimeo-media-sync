@@ -206,9 +206,47 @@
 		} );
 	} );
 
-	console.log('test', wp.media);
+	$( document ).on( 'click', '.vimeo-media-sync-row', function() {
+		var $button = $( this );
+		var postId = $button.data( 'post-id' );
+		if ( ! postId || ! window.VimeoMediaSync ) {
+			return;
+		}
+
+		$button.prop( 'disabled', true );
+		$.post( VimeoMediaSync.ajaxUrl, {
+			action: 'vimeo_media_sync_sync_attachment',
+			nonce: VimeoMediaSync.syncNonce,
+			post_id: postId
+		} ).done( function( response ) {
+			if ( response && response.success ) {
+				$button.text( 'Queued' );
+			}
+		} ).always( function() {
+			$button.prop( 'disabled', false );
+		} );
+	} );
+
+	$( document ).on( 'click', '.vimeo-media-sync-all', function() {
+		var $button = $( this );
+		if ( ! window.VimeoMediaSync ) {
+			return;
+		}
+
+		$button.prop( 'disabled', true );
+		$.post( VimeoMediaSync.ajaxUrl, {
+			action: 'vimeo_media_sync_sync_missing',
+			nonce: VimeoMediaSync.syncMissingNonce
+		} ).done( function( response ) {
+			if ( response && response.success ) {
+				$button.text( 'Queued (' + response.data.synced + ')' );
+			}
+		} ).always( function() {
+			$button.prop( 'disabled', false );
+		} );
+	} );
+
 	if ( window.wp && wp.media && wp.media.frame ) {
-		console.log('test 2', wp.media);
 		wp.media.frame.on( 'open', ensureModalDetails );
 		wp.media.frame.on( 'close', ensureModalDetails );
 		wp.media.frame.on( 'selection:toggle', ensureModalDetails );

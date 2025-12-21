@@ -511,6 +511,8 @@ class Vimeo_Media_Sync_Admin {
 			array(
 				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
 				'nonce'   => wp_create_nonce( 'vimeo_media_sync_render_details' ),
+				'syncNonce' => wp_create_nonce( 'vimeo_media_sync_sync_attachment' ),
+				'syncMissingNonce' => wp_create_nonce( 'vimeo_media_sync_sync_missing' ),
 				'debug'   => ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
 			)
 		);
@@ -574,6 +576,55 @@ class Vimeo_Media_Sync_Admin {
 	}
 
 	/**
+	 * Ajax handler to sync a single attachment.
+	 *
+	 * @since    1.0.0
+	 */
+	public function ajax_sync_attachment() {
+		check_ajax_referer( 'vimeo_media_sync_sync_attachment', 'nonce' );
+
+		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		if ( ! $post_id || ! current_user_can( 'edit_post', $post_id ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
+		}
+
+		$this->maybe_upload_video_to_vimeo( $post_id );
+
+		wp_send_json_success(
+			array(
+				'info' => $this->get_vimeo_attachment_info( $post_id ),
+			)
+		);
+	}
+
+	/**
+	 * Ajax handler to sync missing attachments.
+	 *
+	 * @since    1.0.0
+	 */
+	public function ajax_sync_missing() {
+		check_ajax_referer( 'vimeo_media_sync_sync_missing', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
+		}
+
+		$attachments = $this->get_missing_vimeo_attachments( 20 );
+		$synced = 0;
+
+		foreach ( $attachments as $attachment ) {
+			$this->maybe_upload_video_to_vimeo( $attachment->ID );
+			$synced++;
+		}
+
+		wp_send_json_success(
+			array(
+				'synced' => $synced,
+			)
+		);
+	}
+
+	/**
 	 * Handle manual status refresh from attachment screens.
 	 *
 	 * @since    1.0.0
@@ -592,6 +643,47 @@ class Vimeo_Media_Sync_Admin {
 		if ( ! $redirect ) {
 			$redirect = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
 		}
+
+		wp_safe_redirect( $redirect );
+		exit;
+	}
+
+	/**
+	 * Handle manual sync for attachments missing Vimeo data.
+	 *
+	 * @since    1.0.0
+	 */
+	public function handle_sync_missing() {
+		check_admin_referer( 'vimeo_media_sync_sync_missing', 'vimeo_media_sync_nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_die( esc_html__( 'Unauthorized.', 'vimeo-media-sync' ) );
+		}
+
+		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		$attachments = array();
+		if ( $post_id ) {
+			$attachment = get_post( $post_id );
+			if ( $attachment ) {
+				$attachments = array( $attachment );
+			}
+		} else {
+			$attachments = $this->get_missing_vimeo_attachments( 20 );
+		}
+		$synced = 0;
+
+		foreach ( $attachments as $attachment ) {
+			$this->maybe_upload_video_to_vimeo( $attachment->ID );
+			$synced++;
+		}
+
+		$redirect = add_query_arg(
+			array(
+				'page'   => $this->plugin_name,
+				'synced' => $synced,
+			),
+			admin_url( 'admin.php' )
+		);
 
 		wp_safe_redirect( $redirect );
 		exit;
@@ -639,6 +731,52 @@ class Vimeo_Media_Sync_Admin {
 		);
 
 		return $data;
+	}
+
+	/**
+	 * Fetch attachments missing Vimeo sync metadata.
+	 *
+	 * @since    1.0.0
+	 * @param    int $limit Max results.
+	 * @return   WP_Post[]
+	 */
+	private function get_missing_vimeo_attachments( $limit = 10 ) {
+		return get_posts(
+			array(
+				'post_type'      => 'attachment',
+				'post_mime_type' => 'video',
+				'posts_per_page' => $limit,
+				'orderby'        => 'date',
+				'order'          => 'DESC',
+				'meta_query'     => array(
+					'relation' => 'AND',
+					array(
+						'relation' => 'OR',
+						array(
+							'key'     => '_vimeo_media_sync_uri',
+							'compare' => 'NOT EXISTS',
+						),
+						array(
+							'key'     => '_vimeo_media_sync_uri',
+							'value'   => '',
+							'compare' => '=',
+						),
+					),
+					array(
+						'relation' => 'OR',
+						array(
+							'key'     => '_vimeo_media_sync_video_id',
+							'compare' => 'NOT EXISTS',
+						),
+						array(
+							'key'     => '_vimeo_media_sync_video_id',
+							'value'   => '',
+							'compare' => '=',
+						),
+					),
+				),
+			)
+		);
 	}
 
 	/**
