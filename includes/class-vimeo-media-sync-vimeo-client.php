@@ -150,6 +150,18 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	}
 
 	/**
+	 * Delete a Vimeo video.
+	 *
+	 * @since    1.0.0
+	 * @param    string $video_uri Video URI (e.g. /videos/456).
+	 * @return   array Response data.
+	 */
+	public function delete_video( $video_uri ) {
+		$this->log_debug( 'Deleting Vimeo video: ' . $video_uri );
+		return $this->request( 'DELETE', $video_uri );
+	}
+
+	/**
 	 * Retrieve the current tus upload offset.
 	 *
 	 * @since    1.0.0

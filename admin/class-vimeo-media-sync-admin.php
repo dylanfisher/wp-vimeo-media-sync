@@ -92,6 +92,11 @@ class Vimeo_Media_Sync_Admin {
 			'vimeo_media_sync_privacy',
 			array( $this, 'sanitize_privacy_setting' )
 		);
+		register_setting(
+			$this->plugin_name,
+			'vimeo_media_sync_delete_on_remove',
+			array( $this, 'sanitize_delete_setting' )
+		);
 
 		add_settings_section(
 			'vimeo_media_sync_config_section',
@@ -104,6 +109,14 @@ class Vimeo_Media_Sync_Admin {
 			'vimeo_media_sync_privacy',
 			__( 'Default Privacy', 'vimeo-media-sync' ),
 			array( $this, 'render_privacy_field' ),
+			$this->plugin_name,
+			'vimeo_media_sync_config_section'
+		);
+
+		add_settings_field(
+			'vimeo_media_sync_delete_on_remove',
+			__( 'Delete on Attachment Removal', 'vimeo-media-sync' ),
+			array( $this, 'render_delete_field' ),
 			$this->plugin_name,
 			'vimeo_media_sync_config_section'
 		);
@@ -121,6 +134,17 @@ class Vimeo_Media_Sync_Admin {
 		$value = sanitize_text_field( $value );
 
 		return in_array( $value, $allowed, true ) ? $value : 'default';
+	}
+
+	/**
+	 * Sanitize the delete-on-remove setting.
+	 *
+	 * @since    1.0.0
+	 * @param    string $value Raw setting.
+	 * @return   string
+	 */
+	public function sanitize_delete_setting( $value ) {
+		return $value ? '1' : '0';
 	}
 
 	/**
@@ -156,6 +180,21 @@ class Vimeo_Media_Sync_Admin {
 		<p class="description">
 			<?php echo esc_html__( 'If Vimeo rejects privacy changes, the upload will retry without a privacy override. A paid Vimeo plan is required for private and unlisted videos.', 'vimeo-media-sync' ); ?>
 		</p>
+		<?php
+	}
+
+	/**
+	 * Render the delete-on-remove toggle.
+	 *
+	 * @since    1.0.0
+	 */
+	public function render_delete_field() {
+		$value = get_option( 'vimeo_media_sync_delete_on_remove', '0' );
+		?>
+		<label>
+			<input type="checkbox" name="vimeo_media_sync_delete_on_remove" value="1" <?php checked( $value, '1' ); ?> />
+			<?php echo esc_html__( 'Delete Vimeo videos when the WordPress attachment is deleted.', 'vimeo-media-sync' ); ?>
+		</label>
 		<?php
 	}
 
@@ -332,6 +371,54 @@ class Vimeo_Media_Sync_Admin {
 
 		$this->log_debug( sprintf( 'Vimeo tus upload started for attachment %d', $post_id ) );
 		$this->schedule_status_check( $post_id, 2 * MINUTE_IN_SECONDS );
+	}
+
+	/**
+	 * Delete Vimeo videos when attachments are removed.
+	 *
+	 * @since    1.0.0
+	 * @param    int $post_id Attachment ID.
+	 */
+	public function maybe_delete_vimeo_video( $post_id ) {
+		if ( '1' !== get_option( 'vimeo_media_sync_delete_on_remove', '0' ) ) {
+			return;
+		}
+
+		$post = get_post( $post_id );
+		if ( ! $this->is_video_attachment( $post ) ) {
+			return;
+		}
+
+		$video_id = get_post_meta( $post_id, '_vimeo_media_sync_video_id', true );
+		$video_uri = get_post_meta( $post_id, '_vimeo_media_sync_uri', true );
+		if ( '' === $video_id && '' === $video_uri ) {
+			return;
+		}
+
+		$token = $this->get_access_token();
+		if ( '' === $token ) {
+			$this->log_debug( sprintf( 'Skipping Vimeo delete for attachment %d (missing token)', $post_id ) );
+			return;
+		}
+
+		$upload_source = get_post_meta( $post_id, '_vimeo_media_sync_upload_source', true );
+		if ( '' === $upload_source ) {
+			$this->log_debug( sprintf( 'Skipping Vimeo delete for attachment %d (missing upload source)', $post_id ) );
+			return;
+		}
+
+		$uri = $video_uri ? $video_uri : ( $video_id ? '/videos/' . $video_id : '' );
+		if ( '' === $uri ) {
+			return;
+		}
+
+		$response = $this->get_vimeo_client()->delete_video( $uri );
+		if ( ! $response['success'] ) {
+			$this->log_debug( sprintf( 'Failed to delete Vimeo video for attachment %d: %s', $post_id, $response['error'] ) );
+			return;
+		}
+
+		$this->log_debug( sprintf( 'Deleted Vimeo video for attachment %d', $post_id ) );
 	}
 
 	/**

@@ -164,6 +164,7 @@ class Vimeo_Media_Sync {
 		$this->loader->add_action( 'admin_notices', $plugin_admin, 'maybe_render_missing_token_notice' );
 		$this->loader->add_action( 'add_attachment', $plugin_admin, 'initialize_video_attachment_meta' );
 		$this->loader->add_action( 'add_attachment', $plugin_admin, 'maybe_upload_video_to_vimeo', 20, 1 );
+		$this->loader->add_action( 'delete_attachment', $plugin_admin, 'maybe_delete_vimeo_video', 10, 1 );
 		$this->loader->add_action( 'vimeo_media_sync_check_status', $plugin_admin, 'check_vimeo_processing_status' );
 		$this->loader->add_action( 'add_meta_boxes_attachment', $plugin_admin, 'register_attachment_metabox' );
 		$this->loader->add_action( 'admin_post_vimeo_media_sync_refresh_status', $plugin_admin, 'handle_refresh_status' );
