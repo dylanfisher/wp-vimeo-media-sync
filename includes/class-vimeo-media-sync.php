@@ -164,6 +164,9 @@ class Vimeo_Media_Sync {
 		$this->loader->add_action( 'add_attachment', $plugin_admin, 'initialize_video_attachment_meta' );
 		$this->loader->add_action( 'add_attachment', $plugin_admin, 'maybe_upload_video_to_vimeo', 20, 1 );
 		$this->loader->add_action( 'vimeo_media_sync_check_status', $plugin_admin, 'check_vimeo_processing_status' );
+		$this->loader->add_action( 'add_meta_boxes_attachment', $plugin_admin, 'register_attachment_metabox' );
+		$this->loader->add_action( 'admin_post_vimeo_media_sync_refresh_status', $plugin_admin, 'handle_refresh_status' );
+		$this->loader->add_action( 'wp_ajax_vimeo_media_sync_render_details', $plugin_admin, 'ajax_render_details' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_styles' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );
 

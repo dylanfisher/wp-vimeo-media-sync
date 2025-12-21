@@ -392,7 +392,7 @@ class Vimeo_Media_Sync_Admin {
 	 *
 	 * @since    1.0.0
 	 */
-	public function enqueue_scripts() {
+	public function enqueue_scripts( $hook_suffix ) {
 
 		/**
 		 * This function is provided for demonstration purposes only.
@@ -406,8 +406,108 @@ class Vimeo_Media_Sync_Admin {
 		 * class.
 		 */
 
-		wp_enqueue_script( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'js/vimeo-media-sync-admin.js', array( 'jquery' ), $this->version, false );
+		$should_enqueue_media = in_array( $hook_suffix, array( 'upload.php', 'post.php', 'post-new.php' ), true );
+		if ( $should_enqueue_media ) {
+			wp_enqueue_media();
+		}
 
+		$script_deps = array( 'jquery' );
+		if ( $should_enqueue_media ) {
+			$script_deps[] = 'media-editor';
+			$script_deps[] = 'media-views';
+		}
+
+		wp_enqueue_script( $this->plugin_name, plugin_dir_url( __FILE__ ) . 'js/vimeo-media-sync-admin.js', $script_deps, $this->version, false );
+		wp_localize_script(
+			$this->plugin_name,
+			'VimeoMediaSync',
+			array(
+				'ajaxUrl' => admin_url( 'admin-ajax.php' ),
+				'nonce'   => wp_create_nonce( 'vimeo_media_sync_render_details' ),
+				'debug'   => ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
+			)
+		);
+
+	}
+
+	/**
+	 * Register the Vimeo metabox on attachment edit screens.
+	 *
+	 * @since    1.0.0
+	 */
+	public function register_attachment_metabox() {
+		add_meta_box(
+			'vimeo-media-sync-details',
+			__( 'Vimeo Media Sync', 'vimeo-media-sync' ),
+			array( $this, 'render_attachment_metabox' ),
+			'attachment',
+			'side',
+			'default'
+		);
+	}
+
+	/**
+	 * Render the Vimeo details metabox for video attachments.
+	 *
+	 * @since    1.0.0
+	 * @param    WP_Post $post Attachment post.
+	 */
+	public function render_attachment_metabox( $post ) {
+		if ( ! $this->is_video_attachment( $post ) ) {
+			echo esc_html__( 'Vimeo details are available for video attachments only.', 'vimeo-media-sync' );
+			return;
+		}
+
+		echo $this->render_vimeo_details_html( $post->ID ); // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped
+	}
+
+	/**
+	 * Ajax handler to render the Vimeo details section.
+	 *
+	 * @since    1.0.0
+	 */
+	public function ajax_render_details() {
+		check_ajax_referer( 'vimeo_media_sync_render_details', 'nonce' );
+
+		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		if ( ! $post_id || ! current_user_can( 'edit_post', $post_id ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
+		}
+
+		$refresh = ! empty( $_POST['refresh'] );
+		if ( $refresh ) {
+			$this->check_vimeo_processing_status( $post_id );
+		}
+
+		wp_send_json_success(
+			array(
+				'html' => $this->render_vimeo_details_html( $post_id ),
+			)
+		);
+	}
+
+	/**
+	 * Handle manual status refresh from attachment screens.
+	 *
+	 * @since    1.0.0
+	 */
+	public function handle_refresh_status() {
+		check_admin_referer( 'vimeo_media_sync_refresh_status', 'vimeo_media_sync_nonce' );
+
+		$post_id = isset( $_POST['post_id'] ) ? (int) $_POST['post_id'] : 0;
+		if ( ! $post_id || ! current_user_can( 'edit_post', $post_id ) ) {
+			wp_die( esc_html__( 'Unauthorized.', 'vimeo-media-sync' ) );
+		}
+
+		$this->check_vimeo_processing_status( $post_id );
+
+		$redirect = wp_get_referer();
+		if ( ! $redirect ) {
+			$redirect = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
+		}
+
+		wp_safe_redirect( $redirect );
+		exit;
 	}
 
 	/**
@@ -429,6 +529,111 @@ class Vimeo_Media_Sync_Admin {
 			$this->log_debug( sprintf( 'Scheduling Vimeo status check for attachment %d', $post_id ) );
 			wp_schedule_single_event( $timestamp, 'vimeo_media_sync_check_status', $hook_args );
 		}
+	}
+
+	/**
+	 * Collect Vimeo meta for display.
+	 *
+	 * @since    1.0.0
+	 * @param    int $post_id Attachment ID.
+	 * @return   array
+	 */
+	private function get_vimeo_attachment_info( $post_id ) {
+		$data = array(
+			'status'        => get_post_meta( $post_id, '_vimeo_media_sync_status', true ),
+			'error'         => get_post_meta( $post_id, '_vimeo_media_sync_error', true ),
+			'video_id'      => get_post_meta( $post_id, '_vimeo_media_sync_video_id', true ),
+			'video_uri'     => get_post_meta( $post_id, '_vimeo_media_sync_uri', true ),
+			'link'          => get_post_meta( $post_id, '_vimeo_media_sync_link', true ),
+			'privacy'       => get_post_meta( $post_id, '_vimeo_media_sync_privacy', true ),
+			'duration'      => get_post_meta( $post_id, '_vimeo_media_sync_duration', true ),
+			'upload_offset' => (int) get_post_meta( $post_id, '_vimeo_media_sync_upload_offset', true ),
+			'upload_size'   => (int) get_post_meta( $post_id, '_vimeo_media_sync_upload_size', true ),
+		);
+
+		return $data;
+	}
+
+	/**
+	 * Render Vimeo details HTML for attachment display.
+	 *
+	 * @since    1.0.0
+	 * @param    int $post_id Attachment ID.
+	 * @return   string
+	 */
+	private function render_vimeo_details_html( $post_id ) {
+		$post = get_post( $post_id );
+		if ( ! $this->is_video_attachment( $post ) ) {
+			return '';
+		}
+
+		$data = $this->get_vimeo_attachment_info( $post_id );
+
+		ob_start();
+		?>
+		<div class="details vimeo-media-sync-details">
+			<h2><?php echo esc_html__( 'Vimeo Media Sync', 'vimeo-media-sync' ); ?></h2>
+			<div class="uploaded"><strong><?php echo esc_html__( 'Status:', 'vimeo-media-sync' ); ?></strong> <?php echo esc_html( $data['status'] ? $data['status'] : 'unknown' ); ?></div>
+			<?php if ( $data['video_id'] ) : ?>
+				<div class="uploaded"><strong><?php echo esc_html__( 'Vimeo ID:', 'vimeo-media-sync' ); ?></strong> <?php echo esc_html( $data['video_id'] ); ?></div>
+			<?php endif; ?>
+			<?php if ( $data['video_uri'] ) : ?>
+				<div class="uploaded"><strong><?php echo esc_html__( 'Vimeo URI:', 'vimeo-media-sync' ); ?></strong> <?php echo esc_html( $data['video_uri'] ); ?></div>
+			<?php endif; ?>
+			<?php if ( $data['link'] ) : ?>
+				<div class="uploaded">
+					<strong><?php echo esc_html__( 'Vimeo Link:', 'vimeo-media-sync' ); ?></strong>
+					<a href="<?php echo esc_url( $data['link'] ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $data['link'] ); ?></a>
+				</div>
+			<?php endif; ?>
+			<?php if ( $data['privacy'] ) : ?>
+				<div class="uploaded"><strong><?php echo esc_html__( 'Privacy:', 'vimeo-media-sync' ); ?></strong> <?php echo esc_html( $data['privacy'] ); ?></div>
+			<?php endif; ?>
+			<?php if ( $data['duration'] ) : ?>
+				<div class="uploaded"><strong><?php echo esc_html__( 'Duration:', 'vimeo-media-sync' ); ?></strong> <?php echo esc_html( $data['duration'] ); ?>s</div>
+			<?php endif; ?>
+			<?php if ( $data['upload_size'] ) : ?>
+				<div class="uploaded">
+					<strong><?php echo esc_html__( 'Upload Progress:', 'vimeo-media-sync' ); ?></strong>
+					<?php echo esc_html( $this->format_bytes( $data['upload_offset'] ) . ' / ' . $this->format_bytes( $data['upload_size'] ) ); ?>
+				</div>
+			<?php endif; ?>
+			<?php if ( $data['error'] ) : ?>
+				<div class="uploaded"><strong><?php echo esc_html__( 'Last Error:', 'vimeo-media-sync' ); ?></strong> <?php echo esc_html( $data['error'] ); ?></div>
+			<?php endif; ?>
+			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
+				<?php wp_nonce_field( 'vimeo_media_sync_refresh_status', 'vimeo_media_sync_nonce' ); ?>
+				<input type="hidden" name="action" value="vimeo_media_sync_refresh_status" />
+				<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+				<p>
+					<button type="submit" class="button button-small"><?php echo esc_html__( 'Refresh status', 'vimeo-media-sync' ); ?></button>
+				</p>
+			</form>
+		</div>
+		<?php
+
+		return ob_get_clean();
+	}
+
+	/**
+	 * Format bytes into a readable string.
+	 *
+	 * @since    1.0.0
+	 * @param    int $bytes Byte count.
+	 * @return   string
+	 */
+	private function format_bytes( $bytes ) {
+		$bytes = (float) $bytes;
+		if ( $bytes <= 0 ) {
+			return '0 B';
+		}
+
+		$units = array( 'B', 'KB', 'MB', 'GB' );
+		$unit_index = (int) floor( log( $bytes, 1024 ) );
+		$unit_index = min( $unit_index, count( $units ) - 1 );
+		$value = $bytes / pow( 1024, $unit_index );
+
+		return number_format_i18n( $value, $unit_index === 0 ? 0 : 1 ) . ' ' . $units[ $unit_index ];
 	}
 
 	/**

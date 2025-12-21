@@ -1,32 +1,220 @@
 (function( $ ) {
 	'use strict';
 
-	/**
-	 * All of the code for your admin-facing JavaScript source
-	 * should reside in this file.
-	 *
-	 * Note: It has been assumed you will write jQuery code here, so the
-	 * $ function reference has been prepared for usage within the scope
-	 * of this function.
-	 *
-	 * This enables you to define handlers, for when the DOM is ready:
-	 *
-	 * $(function() {
-	 *
-	 * });
-	 *
-	 * When the window is loaded:
-	 *
-	 * $( window ).load(function() {
-	 *
-	 * });
-	 *
-	 * ...and/or other possibilities.
-	 *
-	 * Ideally, it is not considered best practise to attach more than a
-	 * single DOM-ready or window-load handler for a particular page.
-	 * Although scripts in the WordPress core, Plugins and Themes may be
-	 * practising this, we should strive to set a better example in our own work.
-	 */
+	function debugLog( message, data ) {
+		if ( window.VimeoMediaSync && VimeoMediaSync.debug && window.console ) {
+			if ( typeof data !== 'undefined' ) {
+				console.log( '[Vimeo Media Sync]', message, data );
+			} else {
+				console.log( '[Vimeo Media Sync]', message );
+			}
+		}
+	}
 
+	function fetchDetailsHtml( attachmentId, refresh ) {
+		if ( ! window.VimeoMediaSync ) {
+			debugLog( 'VimeoMediaSync not available' );
+			return $.Deferred().resolve();
+		}
+
+		debugLog( 'Fetching Vimeo details', { attachmentId: attachmentId, refresh: refresh } );
+		return $.post( VimeoMediaSync.ajaxUrl, {
+			action: 'vimeo_media_sync_render_details',
+			nonce: VimeoMediaSync.nonce,
+			post_id: attachmentId,
+			refresh: refresh ? 1 : 0
+		} );
+	}
+
+	function injectDetails( view, html ) {
+		var $settings = view.$el.find( '.media-modal-content .attachment-info .settings' );
+		if ( ! $settings.length ) {
+			$settings = $( '.media-modal:visible .media-modal-content .attachment-info .settings' );
+		}
+		if ( ! $settings.length ) {
+			debugLog( 'Settings container not found for injection' );
+			return;
+		}
+
+		debugLog( 'Injecting Vimeo details' );
+		$settings.next( '.vimeo-media-sync-details' ).remove();
+		if ( html ) {
+			$settings.after( html );
+		}
+	}
+
+	function attachRefreshHandler( view ) {
+		view.$el.on( 'click', '.vimeo-media-sync-details .button', function( event ) {
+			event.preventDefault();
+			var $button = $( this );
+			var attachmentId = view.model && view.model.get( 'id' );
+			if ( ! attachmentId ) {
+				return;
+			}
+
+			$button.prop( 'disabled', true );
+			fetchDetailsHtml( attachmentId, true ).done( function( response ) {
+				if ( response && response.success ) {
+					injectDetails( view, response.data.html );
+				}
+			} ).always( function() {
+				$button.prop( 'disabled', false );
+			} );
+		} );
+	}
+
+	function addVimeoDetailsSection( view ) {
+		var model = view.model;
+		if ( ! model || 'video' !== model.get( 'type' ) ) {
+			view.$el.find( '.vimeo-media-sync-details' ).remove();
+			debugLog( 'Skipping non-video attachment' );
+			return;
+		}
+
+		var attachmentId = model.get( 'id' );
+		debugLog( 'Rendering details for attachment', attachmentId );
+		fetchDetailsHtml( attachmentId, false ).done( function( response ) {
+			if ( response && response.success ) {
+				injectDetails( view, response.data.html );
+			} else {
+				debugLog( 'Failed to fetch details', response );
+			}
+		} );
+
+		attachRefreshHandler( view );
+	}
+
+	function getSelectedAttachmentId() {
+		if ( window.wp && wp.media && wp.media.frame && wp.media.frame.state ) {
+			var state = wp.media.frame.state();
+			if ( state && state.get ) {
+				var selection = state.get( 'selection' );
+				if ( selection && selection.first ) {
+					var model = selection.first();
+					if ( model ) {
+						return model.get( 'id' );
+					}
+				}
+			}
+		}
+		return 0;
+	}
+
+	function getAttachmentIdFromContainer( $container ) {
+		var id = $container.data( 'id' );
+		if ( id ) {
+			return id;
+		}
+		var $dataNode = $container.find( '[data-id]' ).first();
+		if ( $dataNode.length ) {
+			return $dataNode.data( 'id' );
+		}
+		return 0;
+	}
+
+	function ensureModalDetails() {
+		var $modal = $( '.media-modal:visible' );
+		if ( ! $modal.length ) {
+			debugLog( 'No modal found' );
+			return;
+		}
+
+		var $settings = $modal.find( '.media-modal-content .attachment-info .settings' ).first();
+		if ( ! $settings.length ) {
+			debugLog( 'No settings container in modal' );
+			return;
+		}
+
+		var attachmentId = getAttachmentIdFromContainer( $settings ) || getSelectedAttachmentId();
+		if ( ! attachmentId ) {
+			debugLog( 'No attachment id found in modal' );
+			return;
+		}
+
+		if ( $modal.data( 'vimeoMediaSyncId' ) === attachmentId && $settings.next( '.vimeo-media-sync-details' ).length ) {
+			return;
+		}
+
+		debugLog( 'Ensuring modal details for attachment', attachmentId );
+		fetchDetailsHtml( attachmentId, false ).done( function( response ) {
+			if ( response && response.success ) {
+				$modal.data( 'vimeoMediaSyncId', attachmentId );
+				$settings.next( '.vimeo-media-sync-details' ).remove();
+				$settings.after( response.data.html );
+			} else {
+				debugLog( 'Modal details fetch failed', response );
+			}
+		} );
+	}
+
+	function wrapAttachmentDetailsView( ViewClass, assign ) {
+		if ( ! ViewClass || ViewClass.__vimeoMediaSyncWrapped ) {
+			return;
+		}
+
+		ViewClass.__vimeoMediaSyncWrapped = true;
+		assign(
+			ViewClass.extend( {
+			render: function() {
+				ViewClass.prototype.render.apply( this, arguments );
+				addVimeoDetailsSection( this );
+				return this;
+			}
+			} )
+		);
+	}
+
+	if ( window.wp && wp.media && wp.media.view && wp.media.view.Attachment ) {
+		if ( wp.media.view.Attachment.Details ) {
+			wrapAttachmentDetailsView( wp.media.view.Attachment.Details, function( Wrapped ) {
+				wp.media.view.Attachment.Details = Wrapped;
+			} );
+		}
+		if ( wp.media.view.Attachment.Details && wp.media.view.Attachment.Details.TwoColumn ) {
+			wrapAttachmentDetailsView( wp.media.view.Attachment.Details.TwoColumn, function( Wrapped ) {
+				wp.media.view.Attachment.Details.TwoColumn = Wrapped;
+			} );
+		}
+	}
+
+	$( document ).on( 'click', '.media-modal .vimeo-media-sync-details .button', function( event ) {
+		event.preventDefault();
+		var $button = $( this );
+		var $modal = $button.closest( '.media-modal' );
+		var attachmentId = getSelectedAttachmentId();
+		if ( ! attachmentId ) {
+			debugLog( 'No attachment id for refresh' );
+			return;
+		}
+
+		debugLog( 'Refreshing Vimeo details for attachment', attachmentId );
+		$button.prop( 'disabled', true );
+		fetchDetailsHtml( attachmentId, true ).done( function( response ) {
+			if ( response && response.success ) {
+				var $settings = $modal.find( '.media-modal-content .attachment-info .settings' ).first();
+				if ( $settings.length ) {
+					$settings.next( '.vimeo-media-sync-details' ).remove();
+					$settings.after( response.data.html );
+				} else {
+					debugLog( 'Settings container missing during refresh' );
+				}
+			} else {
+				debugLog( 'Refresh failed', response );
+			}
+		} ).always( function() {
+			$button.prop( 'disabled', false );
+		} );
+	} );
+
+	console.log('test', wp.media);
+	if ( window.wp && wp.media && wp.media.frame ) {
+		console.log('test 2', wp.media);
+		wp.media.frame.on( 'open', ensureModalDetails );
+		wp.media.frame.on( 'close', ensureModalDetails );
+		wp.media.frame.on( 'selection:toggle', ensureModalDetails );
+		wp.media.frame.on( 'selection:single', ensureModalDetails );
+		wp.media.frame.on( 'selection:unsingle', ensureModalDetails );
+		wp.media.frame.on( 'content:render:details', ensureModalDetails );
+		wp.media.frame.on( 'content:render:edit', ensureModalDetails );
+	}
 })( jQuery );
