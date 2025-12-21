@@ -14,6 +14,9 @@ This plugin runs directly in WordPress; there is no build step in the repo.
 - Optional syntax check for a file: `php -l vimeo-media-sync.php`.
 - If adding assets, edit the source files in `admin/js`, `public/js`, `admin/css`, or `public/css`.
 
+## Tracking changes in README
+- Make sure any code changes are accurately reflected in the README.
+
 ## Coding Style & Naming Conventions
 - Follow WordPress PHP coding standards: tabs for indentation, braces on the next line, and spaces inside parentheses.
 - PHP classes use `Studly_Case` names (example: `Vimeo_Media_Sync_Public`).
