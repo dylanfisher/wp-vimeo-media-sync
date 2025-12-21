@@ -27,15 +27,15 @@ define( 'VIMEO_MEDIA_SYNC_ACCESS_TOKEN', 'your_token' );
 export VIMEO_MEDIA_SYNC_ACCESS_TOKEN=your_token
 ```
 
-In the plugin dashboard (Vimeo Sync), choose a default privacy value. If Vimeo does not allow privacy overrides, the plugin retries without the privacy parameter.
+In the plugin dashboard (Vimeo Sync), choose a default privacy value and the Vimeo folder name to store uploads. If Vimeo does not allow privacy overrides, the plugin retries without the privacy parameter.
 You can also enable automatic deletion of Vimeo videos when a WordPress attachment is deleted.
 
 ## Usage
 1. Upload a video to the Media Library.
-2. The plugin creates a Vimeo video via tus upload and adds it to the `Wordpress` folder.
+2. The plugin creates a Vimeo video via tus upload and adds it to the configured Vimeo folder.
 3. Open the attachment details to see Vimeo status, IDs, and progress.
 4. Use the “Refresh status” button to manually recheck processing.
-5. Use the dashboard table to sync missing videos in bulk or per row.
+5. Use the dashboard table to sync missing videos in bulk or per row; the table includes status, progress, and error context.
 
 ## Attachment Metadata
 The plugin stores Vimeo metadata on attachments using post meta keys:
@@ -55,7 +55,23 @@ The plugin stores Vimeo metadata on attachments using post meta keys:
 - `_vimeo_media_sync_response`
 
 ## Frontend Helpers
-Use `Vimeo_Media_Sync_Helpers` to access synced metadata without API calls. Examples:
+Use `Vimeo_Media_Sync_Helpers` to access synced metadata without API calls.
+
+Available helpers:
+- `get_vimeo_meta( $attachment )`
+- `get_vimeo_video_id( $attachment )`
+- `get_vimeo_uri( $attachment )`
+- `get_vimeo_link( $attachment )`
+- `get_vimeo_embed_html( $attachment, $args = [] )`
+- `get_vimeo_embed_url( $attachment, $args = [] )`
+- `get_vimeo_autoplay_embed_url( $attachment )`
+- `get_vimeo_direct_files( $attachment )`
+- `get_vimeo_hls_url( $attachment )`
+- `get_vimeo_status_label( $attachment )`
+- `is_vimeo_ready( $attachment )`
+- `get_vimeo_error( $attachment )`
+
+Examples:
 ```
 $embed = Vimeo_Media_Sync_Helpers::get_vimeo_embed_html( $attachment_id );
 $files = Vimeo_Media_Sync_Helpers::get_vimeo_direct_files( $attachment_id );
