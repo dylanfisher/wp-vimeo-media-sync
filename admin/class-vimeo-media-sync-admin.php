@@ -97,6 +97,11 @@ class Vimeo_Media_Sync_Admin {
 			'vimeo_media_sync_delete_on_remove',
 			array( $this, 'sanitize_delete_setting' )
 		);
+		register_setting(
+			$this->plugin_name,
+			'vimeo_media_sync_folder_name',
+			array( $this, 'sanitize_folder_setting' )
+		);
 
 		add_settings_section(
 			'vimeo_media_sync_config_section',
@@ -117,6 +122,14 @@ class Vimeo_Media_Sync_Admin {
 			'vimeo_media_sync_delete_on_remove',
 			__( 'Delete on Attachment Removal', 'vimeo-media-sync' ),
 			array( $this, 'render_delete_field' ),
+			$this->plugin_name,
+			'vimeo_media_sync_config_section'
+		);
+
+		add_settings_field(
+			'vimeo_media_sync_folder_name',
+			__( 'Vimeo Folder Name', 'vimeo-media-sync' ),
+			array( $this, 'render_folder_field' ),
 			$this->plugin_name,
 			'vimeo_media_sync_config_section'
 		);
@@ -145,6 +158,18 @@ class Vimeo_Media_Sync_Admin {
 	 */
 	public function sanitize_delete_setting( $value ) {
 		return $value ? '1' : '0';
+	}
+
+	/**
+	 * Sanitize the folder name setting.
+	 *
+	 * @since    1.0.0
+	 * @param    string $value Raw setting.
+	 * @return   string
+	 */
+	public function sanitize_folder_setting( $value ) {
+		$value = sanitize_text_field( $value );
+		return $value ? $value : 'Wordpress';
 	}
 
 	/**
@@ -195,6 +220,21 @@ class Vimeo_Media_Sync_Admin {
 			<input type="checkbox" name="vimeo_media_sync_delete_on_remove" value="1" <?php checked( $value, '1' ); ?> />
 			<?php echo esc_html__( 'Delete Vimeo videos when the WordPress attachment is deleted.', 'vimeo-media-sync' ); ?>
 		</label>
+		<?php
+	}
+
+	/**
+	 * Render the Vimeo folder name field.
+	 *
+	 * @since    1.0.0
+	 */
+	public function render_folder_field() {
+		$value = get_option( 'vimeo_media_sync_folder_name', 'Wordpress' );
+		?>
+		<input type="text" class="regular-text" name="vimeo_media_sync_folder_name" value="<?php echo esc_attr( $value ); ?>" />
+		<p class="description">
+			<?php echo esc_html__( 'Vimeo project (folder) name to store uploaded videos.', 'vimeo-media-sync' ); ?>
+		</p>
 		<?php
 	}
 
@@ -264,9 +304,10 @@ class Vimeo_Media_Sync_Admin {
 	 * Upload newly added video attachments to Vimeo.
 	 *
 	 * @since    1.0.0
-	 * @param    int $post_id Attachment ID.
+	 * @param    int  $post_id Attachment ID.
+	 * @param    bool $force Force resync even if existing data exists.
 	 */
-	public function maybe_upload_video_to_vimeo( $post_id ) {
+	public function maybe_upload_video_to_vimeo( $post_id, $force = false ) {
 		$post = get_post( $post_id );
 		if ( ! $this->is_video_attachment( $post ) ) {
 			return;
@@ -277,7 +318,8 @@ class Vimeo_Media_Sync_Admin {
 
 		$existing_uri = get_post_meta( $post_id, '_vimeo_media_sync_uri', true );
 		$existing_id  = get_post_meta( $post_id, '_vimeo_media_sync_video_id', true );
-		if ( '' !== $existing_uri || '' !== $existing_id ) {
+		$current_status = get_post_meta( $post_id, '_vimeo_media_sync_status', true );
+		if ( ! $force && ( '' !== $existing_uri || '' !== $existing_id ) && 'error' !== $current_status ) {
 			$this->log_debug( sprintf( 'Skipping Vimeo upload for attachment %d (already synced)', $post_id ) );
 			return;
 		}
@@ -304,11 +346,36 @@ class Vimeo_Media_Sync_Admin {
 		}
 
 		$client = $this->get_vimeo_client();
-		$project = $client->get_or_create_project( 'Wordpress' );
+		$folder_name = get_option( 'vimeo_media_sync_folder_name', 'Wordpress' );
+		$project = $client->get_or_create_project( $folder_name );
 		if ( ! $project || empty( $project['uri'] ) ) {
 			$this->update_vimeo_status( $post_id, 'error', 'Unable to access Vimeo folder.' );
 			$this->log_debug( sprintf( 'Unable to access Vimeo project for attachment %d', $post_id ) );
 			return;
+		}
+
+		$upload_link = get_post_meta( $post_id, '_vimeo_media_sync_upload_link', true );
+		$upload_offset = (int) get_post_meta( $post_id, '_vimeo_media_sync_upload_offset', true );
+		$upload_size = (int) get_post_meta( $post_id, '_vimeo_media_sync_upload_size', true );
+
+		if ( $upload_link && $upload_size > 0 && $upload_offset < $upload_size ) {
+			$this->update_vimeo_status( $post_id, 'uploading', '' );
+			$upload_result = $this->resume_tus_upload( $post_id, $upload_link, $upload_offset, $upload_size );
+			if ( ! $upload_result['success'] ) {
+				$this->update_vimeo_status( $post_id, 'uploading', $upload_result['error'] );
+				return;
+			}
+
+			if ( $upload_result['completed'] ) {
+				$this->update_vimeo_status( $post_id, 'processing', '' );
+			}
+
+			$this->schedule_status_check( $post_id, 2 * MINUTE_IN_SECONDS );
+			return;
+		}
+
+		if ( $force || 'error' === $current_status ) {
+			$this->reset_vimeo_upload_meta( $post_id );
 		}
 
 		update_post_meta( $post_id, '_vimeo_media_sync_upload_source', esc_url_raw( wp_get_attachment_url( $post_id ) ) );
@@ -675,7 +742,7 @@ class Vimeo_Media_Sync_Admin {
 			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
 		}
 
-		$this->maybe_upload_video_to_vimeo( $post_id );
+		$this->maybe_upload_video_to_vimeo( $post_id, true );
 
 		wp_send_json_success(
 			array(
@@ -696,11 +763,11 @@ class Vimeo_Media_Sync_Admin {
 			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
 		}
 
-		$attachments = $this->get_missing_vimeo_attachments( 20 );
+		$attachments = $this->get_missing_vimeo_attachments( 10 );
 		$synced = 0;
 
 		foreach ( $attachments as $attachment ) {
-			$this->maybe_upload_video_to_vimeo( $attachment->ID );
+			$this->maybe_upload_video_to_vimeo( $attachment->ID, true );
 			$synced++;
 		}
 
@@ -755,12 +822,12 @@ class Vimeo_Media_Sync_Admin {
 				$attachments = array( $attachment );
 			}
 		} else {
-			$attachments = $this->get_missing_vimeo_attachments( 20 );
+			$attachments = $this->get_missing_vimeo_attachments( 10 );
 		}
 		$synced = 0;
 
 		foreach ( $attachments as $attachment ) {
-			$this->maybe_upload_video_to_vimeo( $attachment->ID );
+			$this->maybe_upload_video_to_vimeo( $attachment->ID, true );
 			$synced++;
 		}
 
@@ -836,7 +903,7 @@ class Vimeo_Media_Sync_Admin {
 				'orderby'        => 'date',
 				'order'          => 'DESC',
 				'meta_query'     => array(
-					'relation' => 'AND',
+					'relation' => 'OR',
 					array(
 						'relation' => 'OR',
 						array(
@@ -860,6 +927,11 @@ class Vimeo_Media_Sync_Admin {
 							'value'   => '',
 							'compare' => '=',
 						),
+					),
+					array(
+						'key'     => '_vimeo_media_sync_error',
+						'value'   => '',
+						'compare' => '!=',
 					),
 				),
 			)
@@ -982,6 +1054,30 @@ class Vimeo_Media_Sync_Admin {
 		$value = $bytes / pow( 1024, $unit_index );
 
 		return number_format_i18n( $value, $unit_index === 0 ? 0 : 1 ) . ' ' . $units[ $unit_index ];
+	}
+
+	/**
+	 * Clear Vimeo upload metadata to allow resync.
+	 *
+	 * @since    1.0.0
+	 * @param    int $post_id Attachment ID.
+	 */
+	private function reset_vimeo_upload_meta( $post_id ) {
+		$keys = array(
+			'_vimeo_media_sync_uri',
+			'_vimeo_media_sync_video_id',
+			'_vimeo_media_sync_link',
+			'_vimeo_media_sync_response',
+			'_vimeo_media_sync_upload_link',
+			'_vimeo_media_sync_upload_offset',
+			'_vimeo_media_sync_upload_size',
+			'_vimeo_media_sync_error',
+			'_vimeo_media_sync_status',
+		);
+
+		foreach ( $keys as $key ) {
+			delete_post_meta( $post_id, $key );
+		}
 	}
 
 	/**
@@ -1176,7 +1272,10 @@ class Vimeo_Media_Sync_Admin {
 	private function update_vimeo_status( $post_id, $status, $error ) {
 		if ( '' !== $status ) {
 			update_post_meta( $post_id, '_vimeo_media_sync_status', $status );
+		} elseif ( '' !== $error ) {
+			update_post_meta( $post_id, '_vimeo_media_sync_status', 'error' );
 		}
+
 		update_post_meta( $post_id, '_vimeo_media_sync_error', sanitize_text_field( $error ) );
 		$this->log_debug(
 			sprintf(

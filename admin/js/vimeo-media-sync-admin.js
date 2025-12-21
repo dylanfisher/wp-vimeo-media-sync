@@ -208,18 +208,26 @@
 
 	$( document ).on( 'click', '.vimeo-media-sync-row', function() {
 		var $button = $( this );
+		var $row = $button.closest( 'tr' );
 		var postId = $button.data( 'post-id' );
 		if ( ! postId || ! window.VimeoMediaSync ) {
 			return;
 		}
 
 		$button.prop( 'disabled', true );
+		if ( $row.length ) {
+			$row.find( '[data-status]' ).text( 'Queued' );
+		}
 		$.post( VimeoMediaSync.ajaxUrl, {
 			action: 'vimeo_media_sync_sync_attachment',
 			nonce: VimeoMediaSync.syncNonce,
 			post_id: postId
 		} ).done( function( response ) {
 			if ( response && response.success ) {
+				if ( $row.length && response.data && response.data.info ) {
+					var status = response.data.info.status || 'queued';
+					$row.find( '[data-status]' ).text( status );
+				}
 				$button.text( 'Queued' );
 			}
 		} ).always( function() {
@@ -234,6 +242,7 @@
 		}
 
 		$button.prop( 'disabled', true );
+		$( '[data-status]' ).text( 'Queued' );
 		$.post( VimeoMediaSync.ajaxUrl, {
 			action: 'vimeo_media_sync_sync_missing',
 			nonce: VimeoMediaSync.syncMissingNonce

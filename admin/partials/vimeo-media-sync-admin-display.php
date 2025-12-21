@@ -72,12 +72,23 @@
 					<th><?php echo esc_html__( 'Video', 'vimeo-media-sync' ); ?></th>
 					<th><?php echo esc_html__( 'Date', 'vimeo-media-sync' ); ?></th>
 					<th><?php echo esc_html__( 'Author', 'vimeo-media-sync' ); ?></th>
+					<th><?php echo esc_html__( 'Vimeo ID', 'vimeo-media-sync' ); ?></th>
+					<th><?php echo esc_html__( 'Vimeo URI', 'vimeo-media-sync' ); ?></th>
+					<th><?php echo esc_html__( 'Vimeo Link', 'vimeo-media-sync' ); ?></th>
+					<th><?php echo esc_html__( 'Upload Progress', 'vimeo-media-sync' ); ?></th>
 					<th><?php echo esc_html__( 'Last Error', 'vimeo-media-sync' ); ?></th>
+					<th><?php echo esc_html__( 'Status', 'vimeo-media-sync' ); ?></th>
 					<th><?php echo esc_html__( 'Actions', 'vimeo-media-sync' ); ?></th>
 				</tr>
 			</thead>
 			<tbody>
 				<?php foreach ( $missing_attachments as $attachment ) : ?>
+					<?php $video_id = get_post_meta( $attachment->ID, '_vimeo_media_sync_video_id', true ); ?>
+					<?php $video_uri = get_post_meta( $attachment->ID, '_vimeo_media_sync_uri', true ); ?>
+					<?php $video_link = get_post_meta( $attachment->ID, '_vimeo_media_sync_link', true ); ?>
+					<?php $upload_offset = (int) get_post_meta( $attachment->ID, '_vimeo_media_sync_upload_offset', true ); ?>
+					<?php $upload_size = (int) get_post_meta( $attachment->ID, '_vimeo_media_sync_upload_size', true ); ?>
+					<?php $status = get_post_meta( $attachment->ID, '_vimeo_media_sync_status', true ); ?>
 					<?php $error = get_post_meta( $attachment->ID, '_vimeo_media_sync_error', true ); ?>
 					<tr>
 						<td>
@@ -93,6 +104,24 @@
 							echo esc_html( $author_name );
 							?>
 						</td>
+						<td><?php echo esc_html( $video_id ? $video_id : '—' ); ?></td>
+						<td><?php echo esc_html( $video_uri ? $video_uri : '—' ); ?></td>
+						<td>
+							<?php if ( $video_link ) : ?>
+								<a href="<?php echo esc_url( $video_link ); ?>" target="_blank" rel="noopener">
+									<?php echo esc_html( $video_link ); ?>
+								</a>
+							<?php else : ?>
+								<?php echo esc_html__( '—', 'vimeo-media-sync' ); ?>
+							<?php endif; ?>
+						</td>
+						<td>
+							<?php if ( $upload_size ) : ?>
+								<?php echo esc_html( $this->format_bytes( $upload_offset ) . ' / ' . $this->format_bytes( $upload_size ) ); ?>
+							<?php else : ?>
+								<?php echo esc_html__( '—', 'vimeo-media-sync' ); ?>
+							<?php endif; ?>
+						</td>
 						<td>
 							<?php if ( $error ) : ?>
 								<span class="vimeo-media-sync-error" title="<?php echo esc_attr( $error ); ?>">
@@ -101,6 +130,11 @@
 							<?php else : ?>
 								<?php echo esc_html__( '—', 'vimeo-media-sync' ); ?>
 							<?php endif; ?>
+						</td>
+						<td>
+							<span class="vimeo-media-sync-status" data-status>
+								<?php echo esc_html( $status ? $status : '—' ); ?>
+							</span>
 						</td>
 						<td>
 							<button
