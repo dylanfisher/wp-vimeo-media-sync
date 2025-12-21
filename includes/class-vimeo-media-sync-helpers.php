@@ -16,11 +16,11 @@ class Vimeo_Media_Sync_Helpers {
 	 * Retrieve Vimeo metadata for an attachment.
 	 *
 	 * @since    1.0.0
-	 * @param    int $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @return   array
 	 */
-	public static function get_vimeo_meta( $attachment_id ) {
-		$attachment_id = (int) $attachment_id;
+	public static function get_vimeo_meta( $attachment ) {
+		$attachment_id = self::resolve_attachment_id( $attachment );
 		if ( ! $attachment_id ) {
 			return array();
 		}
@@ -49,16 +49,17 @@ class Vimeo_Media_Sync_Helpers {
 	 * Get the Vimeo video ID for an attachment.
 	 *
 	 * @since    1.0.0
-	 * @param    int $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @return   string
 	 */
-	public static function get_vimeo_video_id( $attachment_id ) {
-		$video_id = get_post_meta( (int) $attachment_id, '_vimeo_media_sync_video_id', true );
+	public static function get_vimeo_video_id( $attachment ) {
+		$attachment_id = self::resolve_attachment_id( $attachment );
+		$video_id = get_post_meta( $attachment_id, '_vimeo_media_sync_video_id', true );
 		if ( $video_id ) {
 			return $video_id;
 		}
 
-		$uri = get_post_meta( (int) $attachment_id, '_vimeo_media_sync_uri', true );
+		$uri = get_post_meta( $attachment_id, '_vimeo_media_sync_uri', true );
 		if ( preg_match( '/\/videos\/(\d+)/', (string) $uri, $matches ) ) {
 			return $matches[1];
 		}
@@ -70,11 +71,12 @@ class Vimeo_Media_Sync_Helpers {
 	 * Get the Vimeo URI for an attachment.
 	 *
 	 * @since    1.0.0
-	 * @param    int $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @return   string
 	 */
-	public static function get_vimeo_uri( $attachment_id ) {
-		$uri = get_post_meta( (int) $attachment_id, '_vimeo_media_sync_uri', true );
+	public static function get_vimeo_uri( $attachment ) {
+		$attachment_id = self::resolve_attachment_id( $attachment );
+		$uri = get_post_meta( $attachment_id, '_vimeo_media_sync_uri', true );
 		if ( $uri ) {
 			return $uri;
 		}
@@ -87,23 +89,24 @@ class Vimeo_Media_Sync_Helpers {
 	 * Get the Vimeo page link for an attachment.
 	 *
 	 * @since    1.0.0
-	 * @param    int $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @return   string
 	 */
-	public static function get_vimeo_link( $attachment_id ) {
-		return (string) get_post_meta( (int) $attachment_id, '_vimeo_media_sync_link', true );
+	public static function get_vimeo_link( $attachment ) {
+		$attachment_id = self::resolve_attachment_id( $attachment );
+		return (string) get_post_meta( $attachment_id, '_vimeo_media_sync_link', true );
 	}
 
 	/**
 	 * Build an iframe embed HTML string.
 	 *
 	 * @since    1.0.0
-	 * @param    int   $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @param    array $args Optional embed args.
 	 * @return   string
 	 */
-	public static function get_vimeo_embed_html( $attachment_id, $args = array() ) {
-		$embed_url = self::get_vimeo_embed_url( $attachment_id, $args );
+	public static function get_vimeo_embed_html( $attachment, $args = array() ) {
+		$embed_url = self::get_vimeo_embed_url( $attachment, $args );
 		if ( '' === $embed_url ) {
 			return '';
 		}
@@ -127,12 +130,12 @@ class Vimeo_Media_Sync_Helpers {
 	 * Get the Vimeo player embed URL.
 	 *
 	 * @since    1.0.0
-	 * @param    int   $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @param    array $args Optional embed args.
 	 * @return   string
 	 */
-	public static function get_vimeo_embed_url( $attachment_id, $args = array() ) {
-		$video_id = self::get_vimeo_video_id( $attachment_id );
+	public static function get_vimeo_embed_url( $attachment, $args = array() ) {
+		$video_id = self::get_vimeo_video_id( $attachment );
 		if ( '' === $video_id ) {
 			return '';
 		}
@@ -158,14 +161,36 @@ class Vimeo_Media_Sync_Helpers {
 	}
 
 	/**
+	 * Get an autoplaying, muted, looping embed URL with minimal branding.
+	 *
+	 * @since    1.0.0
+	 * @param    mixed $attachment Attachment object, array, or ID.
+	 * @return   string
+	 */
+	public static function get_vimeo_autoplay_embed_url( $attachment ) {
+		return self::get_vimeo_embed_url(
+			$attachment,
+			array(
+				'autoplay' => true,
+				'muted'    => true,
+				'loop'     => true,
+				'title'    => false,
+				'byline'   => false,
+				'portrait' => false,
+			)
+		);
+	}
+
+	/**
 	 * Return direct file links from the stored Vimeo response.
 	 *
 	 * @since    1.0.0
-	 * @param    int $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @return   array
 	 */
-	public static function get_vimeo_direct_files( $attachment_id ) {
-		$response = get_post_meta( (int) $attachment_id, '_vimeo_media_sync_response', true );
+	public static function get_vimeo_direct_files( $attachment ) {
+		$attachment_id = self::resolve_attachment_id( $attachment );
+		$response = get_post_meta( $attachment_id, '_vimeo_media_sync_response', true );
 		if ( ! is_array( $response ) || empty( $response['files'] ) ) {
 			return array();
 		}
@@ -177,11 +202,11 @@ class Vimeo_Media_Sync_Helpers {
 	 * Get an HLS playlist URL from stored response files.
 	 *
 	 * @since    1.0.0
-	 * @param    int $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @return   string
 	 */
-	public static function get_vimeo_hls_url( $attachment_id ) {
-		$files = self::get_vimeo_direct_files( $attachment_id );
+	public static function get_vimeo_hls_url( $attachment ) {
+		$files = self::get_vimeo_direct_files( $attachment );
 		foreach ( $files as $file ) {
 			if ( isset( $file['quality'] ) && 'hls' === $file['quality'] && ! empty( $file['link'] ) ) {
 				return $file['link'];
@@ -195,11 +220,12 @@ class Vimeo_Media_Sync_Helpers {
 	 * Get a human-friendly status label.
 	 *
 	 * @since    1.0.0
-	 * @param    int $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @return   string
 	 */
-	public static function get_vimeo_status_label( $attachment_id ) {
-		$status = get_post_meta( (int) $attachment_id, '_vimeo_media_sync_status', true );
+	public static function get_vimeo_status_label( $attachment ) {
+		$attachment_id = self::resolve_attachment_id( $attachment );
+		$status = get_post_meta( $attachment_id, '_vimeo_media_sync_status', true );
 		switch ( $status ) {
 			case 'queued':
 				return 'Queued';
@@ -220,22 +246,24 @@ class Vimeo_Media_Sync_Helpers {
 	 * Check if the Vimeo sync is ready.
 	 *
 	 * @since    1.0.0
-	 * @param    int $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @return   bool
 	 */
-	public static function is_vimeo_ready( $attachment_id ) {
-		return 'ready' === get_post_meta( (int) $attachment_id, '_vimeo_media_sync_status', true );
+	public static function is_vimeo_ready( $attachment ) {
+		$attachment_id = self::resolve_attachment_id( $attachment );
+		return 'ready' === get_post_meta( $attachment_id, '_vimeo_media_sync_status', true );
 	}
 
 	/**
 	 * Return the last Vimeo error string.
 	 *
 	 * @since    1.0.0
-	 * @param    int $attachment_id Attachment ID.
+	 * @param    mixed $attachment Attachment object, array, or ID.
 	 * @return   string
 	 */
-	public static function get_vimeo_error( $attachment_id ) {
-		return (string) get_post_meta( (int) $attachment_id, '_vimeo_media_sync_error', true );
+	public static function get_vimeo_error( $attachment ) {
+		$attachment_id = self::resolve_attachment_id( $attachment );
+		return (string) get_post_meta( $attachment_id, '_vimeo_media_sync_error', true );
 	}
 
 	/**
@@ -252,5 +280,42 @@ class Vimeo_Media_Sync_Helpers {
 		}
 
 		return $args[ $key ] ? 1 : 0;
+	}
+
+	/**
+	 * Resolve attachment ID from various inputs.
+	 *
+	 * @since    1.0.0
+	 * @param    mixed $attachment Attachment object, array, or ID.
+	 * @return   int
+	 */
+	private static function resolve_attachment_id( $attachment ) {
+		if ( is_numeric( $attachment ) ) {
+			return (int) $attachment;
+		}
+
+		if ( $attachment instanceof WP_Post ) {
+			return (int) $attachment->ID;
+		}
+
+		if ( is_array( $attachment ) ) {
+			if ( isset( $attachment['ID'] ) ) {
+				return (int) $attachment['ID'];
+			}
+			if ( isset( $attachment['id'] ) ) {
+				return (int) $attachment['id'];
+			}
+		}
+
+		if ( is_object( $attachment ) ) {
+			if ( isset( $attachment->ID ) ) {
+				return (int) $attachment->ID;
+			}
+			if ( isset( $attachment->id ) ) {
+				return (int) $attachment->id;
+			}
+		}
+
+		return 0;
 	}
 }
