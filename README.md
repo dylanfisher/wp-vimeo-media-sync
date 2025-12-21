@@ -54,6 +54,13 @@ The plugin stores Vimeo metadata on attachments using post meta keys:
 - `_vimeo_media_sync_files`
 - `_vimeo_media_sync_response`
 
+## Frontend Helpers
+Use `Vimeo_Media_Sync_Helpers` to access synced metadata without API calls. Examples:
+```
+$embed = Vimeo_Media_Sync_Helpers::get_vimeo_embed_html( $attachment_id );
+$files = Vimeo_Media_Sync_Helpers::get_vimeo_direct_files( $attachment_id );
+```
+
 ## Debugging
 Set `WP_DEBUG` to `true` to log Vimeo sync progress and API calls to the PHP error log.
 

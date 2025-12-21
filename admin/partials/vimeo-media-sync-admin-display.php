@@ -33,7 +33,7 @@
 	</p>
 	<p>
 		<?php
-		$status = ( '' !== $this->get_access_token() ) ? __( '✅ Detected', 'vimeo-media-sync' ) : __( '⛔️ Missing', 'vimeo-media-sync' );
+		$status = ( '' !== $this->get_access_token() ) ? __( 'Detected', 'vimeo-media-sync' ) : __( '⛔️ Missing', 'vimeo-media-sync' );
 		printf(
 			'%s: %s',
 			esc_html__( 'Token status', 'vimeo-media-sync' ),

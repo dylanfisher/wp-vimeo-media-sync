@@ -122,6 +122,11 @@ class Vimeo_Media_Sync {
 		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-vimeo-media-sync-vimeo-client.php';
 
 		/**
+		 * Frontend helper utilities.
+		 */
+		require_once plugin_dir_path( dirname( __FILE__ ) ) . 'includes/class-vimeo-media-sync-helpers.php';
+
+		/**
 		 * The class responsible for defining all actions that occur in the public-facing
 		 * side of the site.
 		 */
