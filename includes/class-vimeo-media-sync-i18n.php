@@ -6,7 +6,7 @@
  * Loads and defines the internationalization files for this plugin
  * so that it is ready for translation.
  *
- * @link       https://https://www.dylanfisher.com/
+ * @link       https://www.dylanfisher.com/
  * @since      1.0.0
  *
  * @package    Vimeo_Media_Sync

@@ -3,7 +3,7 @@
 /**
  * Frontend helper utilities for Vimeo Media Sync metadata.
  *
- * @link       https://https://www.dylanfisher.com/
+ * @link       https://www.dylanfisher.com/
  * @since      1.0.0
  *
  * @package    Vimeo_Media_Sync

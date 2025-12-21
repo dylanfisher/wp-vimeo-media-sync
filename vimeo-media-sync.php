@@ -8,17 +8,17 @@
  * registers the activation and deactivation functions, and defines a function
  * that starts the plugin.
  *
- * @link              https://https://www.dylanfisher.com/
+ * @link              https://www.dylanfisher.com/
  * @since             1.0.0
  * @package           Vimeo_Media_Sync
  *
  * @wordpress-plugin
  * Plugin Name:       Vimeo Media Sync
- * Plugin URI:        https://https://github.com/dylanfisher/wp-vimeo-media-sync
+ * Plugin URI:        https://github.com/dylanfisher/wp-vimeo-media-sync
  * Description:       Uploads and synchronizes WordPress videos with Vimeo, enabling automated publishing, background uploads, and Vimeo-hosted playback workflows.
  * Version:           1.0.0
  * Author:            Dylan Fisher
- * Author URI:        https://https://www.dylanfisher.com//
+ * Author URI:        https://www.dylanfisher.com//
  * License:           GPL-2.0+
  * License URI:       http://www.gnu.org/licenses/gpl-2.0.txt
  * Text Domain:       vimeo-media-sync
