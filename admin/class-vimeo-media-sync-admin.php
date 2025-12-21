@@ -82,6 +82,84 @@ class Vimeo_Media_Sync_Admin {
 	}
 
 	/**
+	 * Register settings for Vimeo sync configuration.
+	 *
+	 * @since    1.0.0
+	 */
+	public function register_settings() {
+		register_setting(
+			$this->plugin_name,
+			'vimeo_media_sync_privacy',
+			array( $this, 'sanitize_privacy_setting' )
+		);
+
+		add_settings_section(
+			'vimeo_media_sync_config_section',
+			__( 'Vimeo Settings', 'vimeo-media-sync' ),
+			array( $this, 'render_settings_intro' ),
+			$this->plugin_name
+		);
+
+		add_settings_field(
+			'vimeo_media_sync_privacy',
+			__( 'Default Privacy', 'vimeo-media-sync' ),
+			array( $this, 'render_privacy_field' ),
+			$this->plugin_name,
+			'vimeo_media_sync_config_section'
+		);
+	}
+
+	/**
+	 * Sanitize the Vimeo privacy setting.
+	 *
+	 * @since    1.0.0
+	 * @param    string $value Raw setting.
+	 * @return   string
+	 */
+	public function sanitize_privacy_setting( $value ) {
+		$allowed = array( 'default', 'unlisted', 'public', 'private' );
+		$value = sanitize_text_field( $value );
+
+		return in_array( $value, $allowed, true ) ? $value : 'default';
+	}
+
+	/**
+	 * Render settings intro text.
+	 *
+	 * @since    1.0.0
+	 */
+	public function render_settings_intro() {
+		echo '<p>' . esc_html__( 'Configure default Vimeo behavior for new uploads.', 'vimeo-media-sync' ) . '</p>';
+	}
+
+	/**
+	 * Render the privacy field.
+	 *
+	 * @since    1.0.0
+	 */
+	public function render_privacy_field() {
+		$value = get_option( 'vimeo_media_sync_privacy', 'unlisted' );
+		$options = array(
+			'default'  => __( 'Use Vimeo account default', 'vimeo-media-sync' ),
+			'unlisted' => __( 'Unlisted', 'vimeo-media-sync' ),
+			'public'   => __( 'Public', 'vimeo-media-sync' ),
+			'private'  => __( 'Private', 'vimeo-media-sync' ),
+		);
+		?>
+		<select name="vimeo_media_sync_privacy">
+			<?php foreach ( $options as $key => $label ) : ?>
+				<option value="<?php echo esc_attr( $key ); ?>" <?php selected( $value, $key ); ?>>
+					<?php echo esc_html( $label ); ?>
+				</option>
+			<?php endforeach; ?>
+		</select>
+		<p class="description">
+			<?php echo esc_html__( 'If Vimeo rejects privacy changes, the upload will retry without a privacy override. A paid Vimeo plan is required for private and unlisted videos.', 'vimeo-media-sync' ); ?>
+		</p>
+		<?php
+	}
+
+	/**
 	 * Render an admin notice if no access token is configured.
 	 *
 	 * @since    1.0.0
@@ -200,7 +278,16 @@ class Vimeo_Media_Sync_Admin {
 
 		$title = get_the_title( $post_id );
 		$description = $post ? $post->post_content : '';
-		$response = $client->create_tus_video( $size, $title, $description );
+		$privacy = get_option( 'vimeo_media_sync_privacy', 'unlisted' );
+		$privacy = $this->normalize_privacy_setting( $privacy );
+		$response = $client->create_tus_video( $size, $title, $description, $privacy );
+
+		if ( ! $response['success'] ) {
+			if ( $privacy && $this->is_privacy_error( $response['body'] ) ) {
+				$this->log_debug( sprintf( 'Retrying Vimeo upload without privacy for attachment %d', $post_id ) );
+				$response = $client->create_tus_video( $size, $title, $description, '' );
+			}
+		}
 
 		if ( ! $response['success'] ) {
 			$this->update_vimeo_status( $post_id, 'error', $response['error'] );
@@ -555,6 +642,42 @@ class Vimeo_Media_Sync_Admin {
 	}
 
 	/**
+	 * Normalize privacy setting to Vimeo API value.
+	 *
+	 * @since    1.0.0
+	 * @param    string $privacy Selected privacy.
+	 * @return   string
+	 */
+	private function normalize_privacy_setting( $privacy ) {
+		if ( 'default' === $privacy ) {
+			return '';
+		}
+
+		return $privacy;
+	}
+
+	/**
+	 * Detect privacy-related Vimeo API errors.
+	 *
+	 * @since    1.0.0
+	 * @param    array $body Vimeo response body.
+	 * @return   bool
+	 */
+	private function is_privacy_error( $body ) {
+		if ( ! is_array( $body ) || empty( $body['invalid_parameters'] ) ) {
+			return false;
+		}
+
+		foreach ( $body['invalid_parameters'] as $param ) {
+			if ( isset( $param['field'] ) && 'privacy.view' === $param['field'] ) {
+				return true;
+			}
+		}
+
+		return false;
+	}
+
+	/**
 	 * Render Vimeo details HTML for attachment display.
 	 *
 	 * @since    1.0.0
@@ -748,6 +871,10 @@ class Vimeo_Media_Sync_Admin {
 	 * @return   int Delay in seconds.
 	 */
 	private function calculate_poll_delay( $attachment, $status, $transcode_status ) {
+		if ( 'ready' === $status && 'in_progress' !== $transcode_status ) {
+			return 0;
+		}
+
 		if ( 'in_progress' === $transcode_status || in_array( $status, array( 'queued', 'uploading', 'processing' ), true ) ) {
 			return 2 * MINUTE_IN_SECONDS;
 		}

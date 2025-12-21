@@ -41,6 +41,13 @@
 		);
 		?>
 	</p>
+	<form method="post" action="options.php">
+		<?php
+		settings_fields( 'vimeo-media-sync' );
+		do_settings_sections( 'vimeo-media-sync' );
+		submit_button( __( 'Save Settings', 'vimeo-media-sync' ), 'secondary' );
+		?>
+	</form>
 
 	<h2 class="title"><?php echo esc_html__( 'Quick Checks', 'vimeo-media-sync' ); ?></h2>
 	<ul>

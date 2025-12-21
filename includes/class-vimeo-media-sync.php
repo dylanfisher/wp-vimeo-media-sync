@@ -160,6 +160,7 @@ class Vimeo_Media_Sync {
 		$plugin_admin = new Vimeo_Media_Sync_Admin( $this->get_plugin_name(), $this->get_version() );
 
 		$this->loader->add_action( 'admin_menu', $plugin_admin, 'add_plugin_admin_menu' );
+		$this->loader->add_action( 'admin_init', $plugin_admin, 'register_settings' );
 		$this->loader->add_action( 'admin_notices', $plugin_admin, 'maybe_render_missing_token_notice' );
 		$this->loader->add_action( 'add_attachment', $plugin_admin, 'initialize_video_attachment_meta' );
 		$this->loader->add_action( 'add_attachment', $plugin_admin, 'maybe_upload_video_to_vimeo', 20, 1 );

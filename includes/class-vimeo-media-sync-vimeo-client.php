@@ -102,22 +102,25 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	 * @param    string $description Video description.
 	 * @return   array Response data.
 	 */
-	public function create_tus_video( $size, $name, $description = '' ) {
+	public function create_tus_video( $size, $name, $description = '', $privacy = '' ) {
 		$this->log_debug( 'Creating Vimeo tus upload (size: ' . (int) $size . ')' );
+		$payload = array(
+			'name'        => $name,
+			'description' => $description,
+			'upload'      => array(
+				'approach' => 'tus',
+				'size'     => (int) $size,
+			),
+		);
+
+		if ( '' !== $privacy ) {
+			$payload['privacy'] = array( 'view' => $privacy );
+		}
+
 		return $this->request(
 			'POST',
 			'/me/videos',
-			array(
-				'name'        => $name,
-				'description' => $description,
-				'privacy'     => array(
-					'view' => 'unlisted',
-				),
-				'upload'      => array(
-					'approach' => 'tus',
-					'size'     => (int) $size,
-				),
-			)
+			$payload
 		);
 	}
 
