@@ -291,7 +291,10 @@
 			return;
 		}
 
-		var $status = $button.closest( 'p' ).find( '.vimeo-media-sync-clear-meta-status' );
+		var $status = $button.siblings( '.vimeo-media-sync-clear-meta-status' );
+		if ( ! $status.length ) {
+			$status = $button.closest( 'p' ).find( '.vimeo-media-sync-clear-meta-status' );
+		}
 		$button.prop( 'disabled', true );
 		if ( $status.length ) {
 			$status.text( 'Clearing metadata...' );
@@ -314,6 +317,46 @@
 		} );
 	} );
 
+	$( document ).on( 'click', '.vimeo-media-sync-refresh-meta', function() {
+		var $button = $( this );
+		var confirmMessage = $button.data( 'confirm' ) || 'Refresh Vimeo metadata for all synced videos?';
+		if ( ! window.confirm( confirmMessage ) ) {
+			return;
+		}
+
+		var ajaxUrl = window.VimeoMediaSync ? VimeoMediaSync.ajaxUrl : window.ajaxurl;
+		var nonce = $button.data( 'nonce' ) || ( window.VimeoMediaSync ? VimeoMediaSync.refreshMetaNonce : '' );
+		if ( ! ajaxUrl || ! nonce ) {
+			debugLog( 'Refresh metadata missing ajaxUrl or nonce' );
+			return;
+		}
+
+		var $status = $button.siblings( '.vimeo-media-sync-refresh-meta-status' );
+		if ( ! $status.length ) {
+			$status = $button.closest( 'p' ).find( '.vimeo-media-sync-refresh-meta-status' );
+		}
+		$button.prop( 'disabled', true );
+		if ( $status.length ) {
+			$status.text( 'Refreshing metadata...' );
+		}
+
+		$.post( ajaxUrl, {
+			action: 'vimeo_media_sync_refresh_all_metadata',
+			nonce: nonce
+		} ).done( function( response ) {
+			if ( response && response.success ) {
+				var refreshed = response.data && response.data.refreshed ? response.data.refreshed : 0;
+				if ( $status.length ) {
+					$status.text( 'Refreshed metadata for ' + refreshed + ' attachment(s).' );
+				}
+			} else if ( $status.length ) {
+				$status.text( 'Unable to refresh metadata.' );
+			}
+		} ).always( function() {
+			$button.prop( 'disabled', false );
+		} );
+	} );
+
 	$( document ).on( 'click', '.vimeo-media-sync-delete-videos', function() {
 		var $button = $( this );
 		if ( ! window.VimeoMediaSync ) {
@@ -325,7 +368,10 @@
 			return;
 		}
 
-		var $status = $button.closest( 'p' ).find( '.vimeo-media-sync-delete-videos-status' );
+		var $status = $button.siblings( '.vimeo-media-sync-delete-videos-status' );
+		if ( ! $status.length ) {
+			$status = $button.closest( 'p' ).find( '.vimeo-media-sync-delete-videos-status' );
+		}
 		$button.prop( 'disabled', true );
 		if ( $status.length ) {
 			$status.text( 'Deleting Vimeo videos...' );

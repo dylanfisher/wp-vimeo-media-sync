@@ -733,6 +733,7 @@ class Vimeo_Media_Sync_Admin {
 				'syncNonce' => wp_create_nonce( 'vimeo_media_sync_sync_attachment' ),
 				'syncMissingNonce' => wp_create_nonce( 'vimeo_media_sync_sync_missing' ),
 				'clearMetaNonce' => wp_create_nonce( 'vimeo_media_sync_clear_all_metadata' ),
+				'refreshMetaNonce' => wp_create_nonce( 'vimeo_media_sync_refresh_all_metadata' ),
 				'deleteVideosNonce' => wp_create_nonce( 'vimeo_media_sync_delete_all_videos' ),
 				'debug'   => ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
 			)
@@ -884,6 +885,60 @@ class Vimeo_Media_Sync_Admin {
 		wp_send_json_success(
 			array(
 				'cleared' => $cleared,
+			)
+		);
+	}
+
+	/**
+	 * Ajax handler to refresh Vimeo metadata for all synced attachments.
+	 *
+	 * @since    1.0.0
+	 */
+	public function ajax_refresh_all_metadata() {
+		check_ajax_referer( 'vimeo_media_sync_refresh_all_metadata', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
+		}
+
+		$refreshed = 0;
+		$page = 1;
+		$per_page = 50;
+
+		do {
+			$attachments = get_posts(
+				array(
+					'post_type'      => 'attachment',
+					'post_mime_type' => 'video',
+					'post_status'    => 'inherit',
+					'posts_per_page' => $per_page,
+					'paged'          => $page,
+					'fields'         => 'ids',
+					'meta_query'     => array(
+						'relation' => 'OR',
+						array(
+							'key'     => '_vimeo_media_sync_uri',
+							'compare' => 'EXISTS',
+						),
+						array(
+							'key'     => '_vimeo_media_sync_video_id',
+							'compare' => 'EXISTS',
+						),
+					),
+				)
+			);
+
+			foreach ( $attachments as $attachment_id ) {
+				$this->check_vimeo_processing_status( $attachment_id );
+				$refreshed++;
+			}
+
+			$page++;
+		} while ( ! empty( $attachments ) );
+
+		wp_send_json_success(
+			array(
+				'refreshed' => $refreshed,
 			)
 		);
 	}
@@ -1239,7 +1294,7 @@ class Vimeo_Media_Sync_Admin {
 				<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
 				<input type="hidden" name="redirect_to" value="<?php echo esc_url( $redirect_to ); ?>" />
 				<p>
-					<button type="submit" class="button button-small vimeo-media-sync-refresh" data-post-id="<?php echo (int) $post_id; ?>"><?php echo esc_html__( 'Refresh status', 'vimeo-media-sync' ); ?></button>
+					<button type="submit" class="button vimeo-media-sync-refresh" data-post-id="<?php echo (int) $post_id; ?>"><?php echo esc_html__( 'Refresh status', 'vimeo-media-sync' ); ?></button>
 				</p>
 			</form>
 		</div>
@@ -1434,10 +1489,6 @@ class Vimeo_Media_Sync_Admin {
 	 * @return   int Delay in seconds.
 	 */
 	private function calculate_poll_delay( $attachment, $status, $transcode_status ) {
-		if ( 'ready' === $status && 'in_progress' !== $transcode_status ) {
-			return 0;
-		}
-
 		if ( 'in_progress' === $transcode_status || in_array( $status, array( 'queued', 'uploading', 'processing' ), true ) ) {
 			return 2 * MINUTE_IN_SECONDS;
 		}
@@ -1445,6 +1496,14 @@ class Vimeo_Media_Sync_Admin {
 		$created_at = strtotime( $attachment->post_date_gmt ? $attachment->post_date_gmt : $attachment->post_date );
 		if ( ! $created_at ) {
 			return 0;
+		}
+
+		if ( 'ready' === $status && 'in_progress' !== $transcode_status ) {
+			$ready_at = get_post_meta( $attachment->ID, '_vimeo_media_sync_synced_at', true );
+			$ready_at = $ready_at ? strtotime( $ready_at ) : $created_at;
+			if ( ! $ready_at || ( time() - $ready_at ) > ( 6 * HOUR_IN_SECONDS ) ) {
+				return 0;
+			}
 		}
 
 		$hours = ( time() - $created_at ) / HOUR_IN_SECONDS;

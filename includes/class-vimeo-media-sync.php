@@ -171,6 +171,7 @@ class Vimeo_Media_Sync {
 		$this->loader->add_action( 'wp_ajax_vimeo_media_sync_sync_missing', $plugin_admin, 'ajax_sync_missing' );
 		$this->loader->add_action( 'wp_ajax_vimeo_media_sync_render_details', $plugin_admin, 'ajax_render_details' );
 		$this->loader->add_action( 'wp_ajax_vimeo_media_sync_clear_all_metadata', $plugin_admin, 'ajax_clear_all_metadata' );
+		$this->loader->add_action( 'wp_ajax_vimeo_media_sync_refresh_all_metadata', $plugin_admin, 'ajax_refresh_all_metadata' );
 		$this->loader->add_action( 'wp_ajax_vimeo_media_sync_delete_all_videos', $plugin_admin, 'ajax_delete_all_videos' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_styles' );
 		$this->loader->add_action( 'admin_enqueue_scripts', $plugin_admin, 'enqueue_scripts' );

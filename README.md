@@ -93,9 +93,11 @@ Release checklist:
 ## Notes
 - Vimeo ownership is tied to the access token owner. Use a team account token if you need uploads to land in a team account.
 - The plugin relies on WordPress cron for status polling. Ensure WP-Cron is running on your site.
+- Status polling continues for up to 6 hours after a video is marked ready to capture late-arriving transcode files.
 - Delete-on-remove only runs for video attachments that the plugin previously uploaded to Vimeo.
 - The plugin does not enqueue any public-facing scripts or styles.
 - Vimeo project lookup reuses existing folders by name (case-insensitive) before creating a new one.
 - Advanced Settings includes a button to delete all Vimeo videos uploaded by this plugin.
+- Advanced Settings includes a button to refresh Vimeo metadata for all synced attachments.
 - The Vimeo folder URI is cached to avoid duplicate folder creation; changing the folder name clears the cache.
 - Plugin updates can be delivered via GitHub Releases.
