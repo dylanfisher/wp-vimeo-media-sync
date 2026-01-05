@@ -85,3 +85,4 @@ Set `WP_DEBUG` to `true` to log Vimeo sync progress and API calls to the PHP err
 - Vimeo ownership is tied to the access token owner. Use a team account token if you need uploads to land in a team account.
 - The plugin relies on WordPress cron for status polling. Ensure WP-Cron is running on your site.
 - Delete-on-remove only runs for video attachments that the plugin previously uploaded to Vimeo.
+- The plugin does not enqueue any public-facing scripts or styles.
