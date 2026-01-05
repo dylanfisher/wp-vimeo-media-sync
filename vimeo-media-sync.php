@@ -16,7 +16,7 @@
  * Plugin Name:       Vimeo Media Sync
  * Plugin URI:        https://github.com/dylanfisher/wp-vimeo-media-sync
  * Description:       Uploads and synchronizes WordPress videos with Vimeo, enabling automated publishing, background uploads, and Vimeo-hosted playback workflows.
- * Version:           1.0.0
+ * Version:           1.1.0
  * Author:            Dylan Fisher
  * Author URI:        https://www.dylanfisher.com//
  * License:           GPL-2.0+
@@ -31,11 +31,10 @@ if ( ! defined( 'WPINC' ) ) {
 }
 
 /**
- * Currently plugin version.
- * Start at version 1.0.0 and use SemVer - https://semver.org
- * Rename this for your plugin and update it as you release new versions.
+ * Currently plugin version (sourced from the header above).
  */
-define( 'VIMEO_MEDIA_SYNC_VERSION', '1.1.0' );
+$vimeo_media_sync_data = get_file_data( __FILE__, array( 'Version' => 'Version' ) );
+define( 'VIMEO_MEDIA_SYNC_VERSION', $vimeo_media_sync_data['Version'] ? $vimeo_media_sync_data['Version'] : '1.0.0' );
 
 /**
  * Load GitHub update checker.
