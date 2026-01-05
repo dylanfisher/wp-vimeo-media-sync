@@ -39,6 +39,22 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	}
 
 	/**
+	 * Fetch a project by URI.
+	 *
+	 * @since    1.0.0
+	 * @param    string $project_uri Project URI or full URL.
+	 * @return   array|null Project data or null on failure.
+	 */
+	public function get_project( $project_uri ) {
+		if ( '' === $project_uri ) {
+			return null;
+		}
+
+		$response = $this->request( 'GET', $this->strip_base_url( $project_uri ) );
+		return $response['success'] ? $response['body'] : null;
+	}
+
+	/**
 	 * Look up a project (folder) by name, creating it if needed.
 	 *
 	 * @since    1.0.0
@@ -47,13 +63,27 @@ class Vimeo_Media_Sync_Vimeo_Client {
 	 */
 	public function get_or_create_project( $name ) {
 		$this->log_debug( 'Looking up Vimeo project: ' . $name );
-		$response = $this->request( 'GET', '/me/projects?query=' . rawurlencode( $name ) );
-		if ( $response['success'] ) {
-			foreach ( $response['body']['data'] as $project ) {
-				if ( isset( $project['name'] ) && $project['name'] === $name ) {
-					return $project;
+		$normalized = strtolower( trim( $name ) );
+		$path = '/me/projects?query=' . rawurlencode( $name ) . '&per_page=100';
+
+		while ( $path ) {
+			$response = $this->request( 'GET', $path );
+			if ( $response['success'] && ! empty( $response['body']['data'] ) ) {
+				foreach ( $response['body']['data'] as $project ) {
+					if ( isset( $project['name'] ) && strtolower( trim( $project['name'] ) ) === $normalized ) {
+						return $project;
+					}
 				}
 			}
+
+			$next = '';
+			if ( $response['success'] && ! empty( $response['body']['paging']['next'] ) ) {
+				$next = $response['body']['paging']['next'];
+			}
+			if ( '' === $next ) {
+				break;
+			}
+			$path = $this->strip_base_url( $next );
 		}
 
 		$this->log_debug( 'Creating Vimeo project: ' . $name );
@@ -66,6 +96,21 @@ class Vimeo_Media_Sync_Vimeo_Client {
 		);
 
 		return $create['success'] ? $create['body'] : null;
+	}
+
+	/**
+	 * Strip the base URL from a full API URL.
+	 *
+	 * @since    1.0.0
+	 * @param    string $url Full Vimeo API URL.
+	 * @return   string API path.
+	 */
+	private function strip_base_url( $url ) {
+		if ( 0 === strpos( $url, $this->base_url ) ) {
+			return substr( $url, strlen( $this->base_url ) );
+		}
+
+		return $url;
 	}
 
 	/**

@@ -172,6 +172,19 @@
 			</button>
 			<span class="vimeo-media-sync-clear-meta-status" aria-live="polite"></span>
 		</p>
+		<p>
+			<?php echo esc_html__( 'Need to remove all videos uploaded by this plugin from Vimeo? Use the delete button below. This cannot be undone.', 'vimeo-media-sync' ); ?>
+		</p>
+		<p>
+			<button
+				type="button"
+				class="button button-secondary vimeo-media-sync-delete-videos"
+				data-confirm="<?php echo esc_attr__( 'This will delete all Vimeo videos uploaded by this plugin. This cannot be undone. Continue?', 'vimeo-media-sync' ); ?>"
+			>
+				<?php echo esc_html__( 'Delete Vimeo videos', 'vimeo-media-sync' ); ?>
+			</button>
+			<span class="vimeo-media-sync-delete-videos-status" aria-live="polite"></span>
+		</p>
 	</details>
 
 	<h2 class="title"><?php echo esc_html__( 'Quick Checks', 'vimeo-media-sync' ); ?></h2>

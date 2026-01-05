@@ -169,7 +169,13 @@ class Vimeo_Media_Sync_Admin {
 	 */
 	public function sanitize_folder_setting( $value ) {
 		$value = sanitize_text_field( $value );
-		return $value ? $value : 'Wordpress';
+		$value = $value ? $value : 'Wordpress';
+		$current = get_option( 'vimeo_media_sync_folder_name', 'Wordpress' );
+		if ( $current !== $value ) {
+			delete_option( 'vimeo_media_sync_folder_uri' );
+		}
+
+		return $value;
 	}
 
 	/**
@@ -347,7 +353,26 @@ class Vimeo_Media_Sync_Admin {
 
 		$client = $this->get_vimeo_client();
 		$folder_name = get_option( 'vimeo_media_sync_folder_name', 'Wordpress' );
-		$project = $client->get_or_create_project( $folder_name );
+		$project = null;
+		$project_uri = get_option( 'vimeo_media_sync_folder_uri', '' );
+		if ( $project_uri ) {
+			$project = $client->get_project( $project_uri );
+			if ( $project && isset( $project['name'] ) ) {
+				$normalized = strtolower( trim( $folder_name ) );
+				if ( strtolower( trim( $project['name'] ) ) !== $normalized ) {
+					$project = null;
+				}
+			}
+			if ( ! $project || empty( $project['uri'] ) ) {
+				delete_option( 'vimeo_media_sync_folder_uri' );
+			}
+		}
+		if ( ! $project ) {
+			$project = $client->get_or_create_project( $folder_name );
+			if ( $project && ! empty( $project['uri'] ) ) {
+				update_option( 'vimeo_media_sync_folder_uri', $project['uri'] );
+			}
+		}
 		if ( ! $project || empty( $project['uri'] ) ) {
 			$this->update_vimeo_status( $post_id, 'error', 'Unable to access Vimeo folder.' );
 			$this->log_debug( sprintf( 'Unable to access Vimeo project for attachment %d', $post_id ) );
@@ -451,41 +476,81 @@ class Vimeo_Media_Sync_Admin {
 			return;
 		}
 
+		$this->delete_vimeo_video_for_attachment( $post_id );
+	}
+
+	/**
+	 * Delete a Vimeo video linked to an attachment.
+	 *
+	 * @since    1.0.0
+	 * @param    int $post_id Attachment ID.
+	 * @return   array { deleted: bool, skipped: bool, error: string }
+	 */
+	private function delete_vimeo_video_for_attachment( $post_id ) {
 		$post = get_post( $post_id );
 		if ( ! $this->is_video_attachment( $post ) ) {
-			return;
+			return array(
+				'deleted' => false,
+				'skipped' => true,
+				'error'   => '',
+			);
 		}
 
 		$video_id = get_post_meta( $post_id, '_vimeo_media_sync_video_id', true );
 		$video_uri = get_post_meta( $post_id, '_vimeo_media_sync_uri', true );
 		if ( '' === $video_id && '' === $video_uri ) {
-			return;
+			return array(
+				'deleted' => false,
+				'skipped' => true,
+				'error'   => '',
+			);
 		}
 
 		$token = $this->get_access_token();
 		if ( '' === $token ) {
 			$this->log_debug( sprintf( 'Skipping Vimeo delete for attachment %d (missing token)', $post_id ) );
-			return;
+			return array(
+				'deleted' => false,
+				'skipped' => false,
+				'error'   => 'Missing Vimeo access token.',
+			);
 		}
 
 		$upload_source = get_post_meta( $post_id, '_vimeo_media_sync_upload_source', true );
 		if ( '' === $upload_source ) {
 			$this->log_debug( sprintf( 'Skipping Vimeo delete for attachment %d (missing upload source)', $post_id ) );
-			return;
+			return array(
+				'deleted' => false,
+				'skipped' => true,
+				'error'   => '',
+			);
 		}
 
 		$uri = $video_uri ? $video_uri : ( $video_id ? '/videos/' . $video_id : '' );
 		if ( '' === $uri ) {
-			return;
+			return array(
+				'deleted' => false,
+				'skipped' => true,
+				'error'   => '',
+			);
 		}
 
 		$response = $this->get_vimeo_client()->delete_video( $uri );
 		if ( ! $response['success'] ) {
 			$this->log_debug( sprintf( 'Failed to delete Vimeo video for attachment %d: %s', $post_id, $response['error'] ) );
-			return;
+			return array(
+				'deleted' => false,
+				'skipped' => false,
+				'error'   => $response['error'],
+			);
 		}
 
 		$this->log_debug( sprintf( 'Deleted Vimeo video for attachment %d', $post_id ) );
+		return array(
+			'deleted' => true,
+			'skipped' => false,
+			'error'   => '',
+		);
 	}
 
 	/**
@@ -668,6 +733,7 @@ class Vimeo_Media_Sync_Admin {
 				'syncNonce' => wp_create_nonce( 'vimeo_media_sync_sync_attachment' ),
 				'syncMissingNonce' => wp_create_nonce( 'vimeo_media_sync_sync_missing' ),
 				'clearMetaNonce' => wp_create_nonce( 'vimeo_media_sync_clear_all_metadata' ),
+				'deleteVideosNonce' => wp_create_nonce( 'vimeo_media_sync_delete_all_videos' ),
 				'debug'   => ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
 			)
 		);
@@ -818,6 +884,62 @@ class Vimeo_Media_Sync_Admin {
 		wp_send_json_success(
 			array(
 				'cleared' => $cleared,
+			)
+		);
+	}
+
+	/**
+	 * Ajax handler to delete Vimeo videos for all synced attachments.
+	 *
+	 * @since    1.0.0
+	 */
+	public function ajax_delete_all_videos() {
+		check_ajax_referer( 'vimeo_media_sync_delete_all_videos', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
+		}
+
+		$deleted = 0;
+		$failed = 0;
+		$page = 1;
+		$per_page = 50;
+
+		do {
+			$attachments = get_posts(
+				array(
+					'post_type'      => 'attachment',
+					'post_mime_type' => 'video',
+					'post_status'    => 'inherit',
+					'posts_per_page' => $per_page,
+					'paged'          => $page,
+					'fields'         => 'ids',
+					'meta_query'     => array(
+						array(
+							'key'     => '_vimeo_media_sync_upload_source',
+							'compare' => 'EXISTS',
+						),
+					),
+				)
+			);
+
+			foreach ( $attachments as $attachment_id ) {
+				$result = $this->delete_vimeo_video_for_attachment( $attachment_id );
+				if ( $result['deleted'] ) {
+					$deleted++;
+					$this->clear_vimeo_attachment_meta( $attachment_id );
+				} elseif ( ! $result['skipped'] ) {
+					$failed++;
+				}
+			}
+
+			$page++;
+		} while ( ! empty( $attachments ) );
+
+		wp_send_json_success(
+			array(
+				'deleted' => $deleted,
+				'failed'  => $failed,
 			)
 		);
 	}

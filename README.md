@@ -86,3 +86,6 @@ Set `WP_DEBUG` to `true` to log Vimeo sync progress and API calls to the PHP err
 - The plugin relies on WordPress cron for status polling. Ensure WP-Cron is running on your site.
 - Delete-on-remove only runs for video attachments that the plugin previously uploaded to Vimeo.
 - The plugin does not enqueue any public-facing scripts or styles.
+- Vimeo project lookup reuses existing folders by name (case-insensitive) before creating a new one.
+- Advanced Settings includes a button to delete all Vimeo videos uploaded by this plugin.
+- The Vimeo folder URI is cached to avoid duplicate folder creation; changing the folder name clears the cache.

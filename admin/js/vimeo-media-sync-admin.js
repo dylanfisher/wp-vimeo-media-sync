@@ -314,6 +314,41 @@
 		} );
 	} );
 
+	$( document ).on( 'click', '.vimeo-media-sync-delete-videos', function() {
+		var $button = $( this );
+		if ( ! window.VimeoMediaSync ) {
+			return;
+		}
+
+		var confirmMessage = $button.data( 'confirm' ) || 'Delete Vimeo videos uploaded by this plugin?';
+		if ( ! window.confirm( confirmMessage ) ) {
+			return;
+		}
+
+		var $status = $button.closest( 'p' ).find( '.vimeo-media-sync-delete-videos-status' );
+		$button.prop( 'disabled', true );
+		if ( $status.length ) {
+			$status.text( 'Deleting Vimeo videos...' );
+		}
+
+		$.post( VimeoMediaSync.ajaxUrl, {
+			action: 'vimeo_media_sync_delete_all_videos',
+			nonce: VimeoMediaSync.deleteVideosNonce
+		} ).done( function( response ) {
+			if ( response && response.success ) {
+				var deleted = response.data && response.data.deleted ? response.data.deleted : 0;
+				var failed = response.data && response.data.failed ? response.data.failed : 0;
+				if ( $status.length ) {
+					$status.text( 'Deleted ' + deleted + ' video(s). Failed: ' + failed + '.' );
+				}
+			} else if ( $status.length ) {
+				$status.text( 'Unable to delete Vimeo videos.' );
+			}
+		} ).always( function() {
+			$button.prop( 'disabled', false );
+		} );
+	} );
+
 	if ( window.wp && wp.media && wp.media.frame ) {
 		wp.media.frame.on( 'open', ensureModalDetails );
 		wp.media.frame.on( 'close', ensureModalDetails );
