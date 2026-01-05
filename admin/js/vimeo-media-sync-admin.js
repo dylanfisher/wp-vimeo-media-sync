@@ -206,6 +206,31 @@
 		} );
 	} );
 
+	$( document ).on( 'click', '.vimeo-media-sync-details .vimeo-media-sync-refresh', function( event ) {
+		var $button = $( this );
+		if ( $button.closest( '.media-modal' ).length ) {
+			return;
+		}
+
+		event.preventDefault();
+		var attachmentId = parseInt( $button.data( 'post-id' ), 10 );
+		if ( ! attachmentId ) {
+			debugLog( 'No attachment id for refresh' );
+			return;
+		}
+
+		$button.prop( 'disabled', true );
+		fetchDetailsHtml( attachmentId, true ).done( function( response ) {
+			if ( response && response.success ) {
+				$button.closest( '.vimeo-media-sync-details' ).replaceWith( response.data.html );
+			} else {
+				debugLog( 'Refresh failed', response );
+			}
+		} ).always( function() {
+			$button.prop( 'disabled', false );
+		} );
+	} );
+
 	$( document ).on( 'click', '.vimeo-media-sync-row', function() {
 		var $button = $( this );
 		var $row = $button.closest( 'tr' );

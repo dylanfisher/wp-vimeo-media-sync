@@ -837,7 +837,13 @@ class Vimeo_Media_Sync_Admin {
 
 		$this->check_vimeo_processing_status( $post_id );
 
-		$redirect = wp_get_referer();
+		$redirect = '';
+		if ( isset( $_POST['redirect_to'] ) ) {
+			$redirect = wp_validate_redirect( wp_unslash( $_POST['redirect_to'] ), '' );
+		}
+		if ( ! $redirect ) {
+			$redirect = wp_get_referer();
+		}
 		if ( ! $redirect ) {
 			$redirect = admin_url( 'post.php?post=' . $post_id . '&action=edit' );
 		}
@@ -1032,6 +1038,36 @@ class Vimeo_Media_Sync_Admin {
 		}
 
 		$data = $this->get_vimeo_attachment_info( $post_id );
+		$files = Vimeo_Media_Sync_Helpers::get_vimeo_direct_files( $post_id );
+		$redirect_to = get_edit_post_link( $post_id, 'url' );
+		if ( ! $redirect_to ) {
+			$redirect_to = wp_get_referer();
+		}
+		$file_links = array();
+		if ( ! empty( $files ) ) {
+			foreach ( $files as $file ) {
+				if ( empty( $file['link'] ) ) {
+					continue;
+				}
+				$label_parts = array();
+				if ( ! empty( $file['quality'] ) ) {
+					$label_parts[] = $file['quality'];
+				}
+				if ( ! empty( $file['width'] ) && ! empty( $file['height'] ) ) {
+					$label_parts[] = $file['width'] . 'x' . $file['height'];
+				}
+				if ( ! empty( $file['size'] ) ) {
+					$label_parts[] = $this->format_bytes( (int) $file['size'] );
+				}
+				if ( ! empty( $file['type'] ) ) {
+					$label_parts[] = $file['type'];
+				}
+				$file_links[] = array(
+					'url'   => $file['link'],
+					'label' => $label_parts ? implode( ' - ', $label_parts ) : esc_html__( 'Direct file', 'vimeo-media-sync' ),
+				);
+			}
+		}
 
 		ob_start();
 		?>
@@ -1065,12 +1101,23 @@ class Vimeo_Media_Sync_Admin {
 			<?php if ( $data['error'] ) : ?>
 				<div class="uploaded"><strong><?php echo esc_html__( 'Last Error:', 'vimeo-media-sync' ); ?></strong> <?php echo esc_html( $data['error'] ); ?></div>
 			<?php endif; ?>
+			<?php if ( ! empty( $file_links ) ) : ?>
+				<details class="uploaded vimeo-media-sync-files">
+					<summary><?php echo esc_html__( 'Direct file links', 'vimeo-media-sync' ); ?></summary>
+					<ul>
+						<?php foreach ( $file_links as $file_link ) : ?>
+							<li><a href="<?php echo esc_url( $file_link['url'] ); ?>" target="_blank" rel="noopener"><?php echo esc_html( $file_link['label'] ); ?></a></li>
+						<?php endforeach; ?>
+					</ul>
+				</details>
+			<?php endif; ?>
 			<form method="post" action="<?php echo esc_url( admin_url( 'admin-post.php' ) ); ?>">
 				<?php wp_nonce_field( 'vimeo_media_sync_refresh_status', 'vimeo_media_sync_nonce' ); ?>
 				<input type="hidden" name="action" value="vimeo_media_sync_refresh_status" />
 				<input type="hidden" name="post_id" value="<?php echo (int) $post_id; ?>" />
+				<input type="hidden" name="redirect_to" value="<?php echo esc_url( $redirect_to ); ?>" />
 				<p>
-					<button type="submit" class="button button-small"><?php echo esc_html__( 'Refresh status', 'vimeo-media-sync' ); ?></button>
+					<button type="submit" class="button button-small vimeo-media-sync-refresh" data-post-id="<?php echo (int) $post_id; ?>"><?php echo esc_html__( 'Refresh status', 'vimeo-media-sync' ); ?></button>
 				</p>
 			</form>
 		</div>
