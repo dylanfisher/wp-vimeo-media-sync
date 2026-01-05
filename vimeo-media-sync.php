@@ -35,7 +35,19 @@ if ( ! defined( 'WPINC' ) ) {
  * Start at version 1.0.0 and use SemVer - https://semver.org
  * Rename this for your plugin and update it as you release new versions.
  */
-define( 'VIMEO_MEDIA_SYNC_VERSION', '1.0.0' );
+define( 'VIMEO_MEDIA_SYNC_VERSION', '1.1.0' );
+
+/**
+ * Load GitHub update checker.
+ */
+require_once plugin_dir_path( __FILE__ ) . 'includes/plugin-update-checker/plugin-update-checker.php';
+
+$vimeo_media_sync_update_checker = \YahnisElsts\PluginUpdateChecker\v5\PucFactory::buildUpdateChecker(
+	'https://github.com/dylanfisher/wp-vimeo-media-sync/',
+	__FILE__,
+	'wp-vimeo-media-sync'
+);
+$vimeo_media_sync_update_checker->setBranch( 'main' );
 
 /**
  * The code that runs during plugin activation.

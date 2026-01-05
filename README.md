@@ -81,6 +81,15 @@ $files = Vimeo_Media_Sync_Helpers::get_vimeo_direct_files( $attachment_id );
 ## Debugging
 Set `WP_DEBUG` to `true` to log Vimeo sync progress and API calls to the PHP error log.
 
+## Updates (GitHub Releases)
+This plugin bundles the [Plugin Update Checker](https://github.com/YahnisElsts/plugin-update-checker) library at `includes/plugin-update-checker/` and initializes it in `vimeo-media-sync.php` to deliver updates from GitHub Releases.
+
+Release checklist:
+1. Update the `Version` header in `vimeo-media-sync.php`.
+2. Create a new GitHub Release for `https://github.com/dylanfisher/wp-vimeo-media-sync`.
+3. Use a tag higher than the plugin `Version` (for example, `1.0.1` or `v1.0.1`).
+4. Avoid marking the release as a pre-release (pre-releases are ignored).
+
 ## Notes
 - Vimeo ownership is tied to the access token owner. Use a team account token if you need uploads to land in a team account.
 - The plugin relies on WordPress cron for status polling. Ensure WP-Cron is running on your site.
@@ -89,3 +98,4 @@ Set `WP_DEBUG` to `true` to log Vimeo sync progress and API calls to the PHP err
 - Vimeo project lookup reuses existing folders by name (case-insensitive) before creating a new one.
 - Advanced Settings includes a button to delete all Vimeo videos uploaded by this plugin.
 - The Vimeo folder URI is cached to avoid duplicate folder creation; changing the folder name clears the cache.
+- Plugin updates can be delivered via GitHub Releases.
