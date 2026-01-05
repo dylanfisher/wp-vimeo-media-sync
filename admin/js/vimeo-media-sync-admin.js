@@ -255,6 +255,40 @@
 		} );
 	} );
 
+	$( document ).on( 'click', '.vimeo-media-sync-clear-meta', function() {
+		var $button = $( this );
+		if ( ! window.VimeoMediaSync ) {
+			return;
+		}
+
+		var confirmMessage = $button.data( 'confirm' ) || 'Clear Vimeo metadata for all video attachments?';
+		if ( ! window.confirm( confirmMessage ) ) {
+			return;
+		}
+
+		var $status = $button.closest( 'p' ).find( '.vimeo-media-sync-clear-meta-status' );
+		$button.prop( 'disabled', true );
+		if ( $status.length ) {
+			$status.text( 'Clearing metadata...' );
+		}
+
+		$.post( VimeoMediaSync.ajaxUrl, {
+			action: 'vimeo_media_sync_clear_all_metadata',
+			nonce: VimeoMediaSync.clearMetaNonce
+		} ).done( function( response ) {
+			if ( response && response.success ) {
+				var cleared = response.data && response.data.cleared ? response.data.cleared : 0;
+				if ( $status.length ) {
+					$status.text( 'Cleared metadata for ' + cleared + ' attachment(s).' );
+				}
+			} else if ( $status.length ) {
+				$status.text( 'Unable to clear metadata.' );
+			}
+		} ).always( function() {
+			$button.prop( 'disabled', false );
+		} );
+	} );
+
 	if ( window.wp && wp.media && wp.media.frame ) {
 		wp.media.frame.on( 'open', ensureModalDetails );
 		wp.media.frame.on( 'close', ensureModalDetails );

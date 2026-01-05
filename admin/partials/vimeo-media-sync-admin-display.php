@@ -155,6 +155,24 @@
 			</button>
 		</p>
 	<?php endif; ?>
+	<details class="vimeo-media-sync-danger-zone">
+		<summary>
+			<span style="cursor: pointer;"><?php echo esc_html__( 'Advanced Settings', 'vimeo-media-sync' ); ?></span>
+		</summary>
+		<p>
+			<?php echo esc_html__( 'If you change Vimeo accounts and need WordPress to re-sync every video using the new credentials, use the Clear Vimeo metadata button below. After clearing the metadata, refresh the page and sync the missing videos.', 'vimeo-media-sync' ); ?>
+		</p>
+		<p>
+			<button
+				type="button"
+				class="button vimeo-media-sync-clear-meta"
+				data-confirm="<?php echo esc_attr__( 'This will remove all Vimeo Media Sync metadata from every video attachment. After this, all videos will be treated as unsynced and will need to be re-uploaded to Vimeo. Continue?', 'vimeo-media-sync' ); ?>"
+			>
+				<?php echo esc_html__( 'Clear Vimeo metadata', 'vimeo-media-sync' ); ?>
+			</button>
+			<span class="vimeo-media-sync-clear-meta-status" aria-live="polite"></span>
+		</p>
+	</details>
 
 	<h2 class="title"><?php echo esc_html__( 'Quick Checks', 'vimeo-media-sync' ); ?></h2>
 	<ul>

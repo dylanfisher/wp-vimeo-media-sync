@@ -667,6 +667,7 @@ class Vimeo_Media_Sync_Admin {
 				'nonce'   => wp_create_nonce( 'vimeo_media_sync_render_details' ),
 				'syncNonce' => wp_create_nonce( 'vimeo_media_sync_sync_attachment' ),
 				'syncMissingNonce' => wp_create_nonce( 'vimeo_media_sync_sync_missing' ),
+				'clearMetaNonce' => wp_create_nonce( 'vimeo_media_sync_clear_all_metadata' ),
 				'debug'   => ( defined( 'WP_DEBUG' ) && WP_DEBUG ),
 			)
 		);
@@ -774,6 +775,49 @@ class Vimeo_Media_Sync_Admin {
 		wp_send_json_success(
 			array(
 				'synced' => $synced,
+			)
+		);
+	}
+
+	/**
+	 * Ajax handler to clear all Vimeo metadata from video attachments.
+	 *
+	 * @since    1.0.0
+	 */
+	public function ajax_clear_all_metadata() {
+		check_ajax_referer( 'vimeo_media_sync_clear_all_metadata', 'nonce' );
+
+		if ( ! current_user_can( 'manage_options' ) ) {
+			wp_send_json_error( array( 'message' => 'Unauthorized.' ), 403 );
+		}
+
+		$cleared = 0;
+		$page = 1;
+		$per_page = 100;
+
+		do {
+			$attachments = get_posts(
+				array(
+					'post_type'      => 'attachment',
+					'post_mime_type' => 'video',
+					'post_status'    => 'inherit',
+					'posts_per_page' => $per_page,
+					'paged'          => $page,
+					'fields'         => 'ids',
+				)
+			);
+
+			foreach ( $attachments as $attachment_id ) {
+				$this->clear_vimeo_attachment_meta( $attachment_id );
+				$cleared++;
+			}
+
+			$page++;
+		} while ( ! empty( $attachments ) );
+
+		wp_send_json_success(
+			array(
+				'cleared' => $cleared,
 			)
 		);
 	}
@@ -1073,6 +1117,35 @@ class Vimeo_Media_Sync_Admin {
 			'_vimeo_media_sync_upload_size',
 			'_vimeo_media_sync_error',
 			'_vimeo_media_sync_status',
+		);
+
+		foreach ( $keys as $key ) {
+			delete_post_meta( $post_id, $key );
+		}
+	}
+
+	/**
+	 * Clear all Vimeo metadata for an attachment.
+	 *
+	 * @since    1.0.0
+	 * @param    int $post_id Attachment ID.
+	 */
+	private function clear_vimeo_attachment_meta( $post_id ) {
+		$keys = array(
+			'_vimeo_media_sync_uri',
+			'_vimeo_media_sync_video_id',
+			'_vimeo_media_sync_link',
+			'_vimeo_media_sync_status',
+			'_vimeo_media_sync_synced_at',
+			'_vimeo_media_sync_error',
+			'_vimeo_media_sync_upload_source',
+			'_vimeo_media_sync_upload_link',
+			'_vimeo_media_sync_upload_offset',
+			'_vimeo_media_sync_upload_size',
+			'_vimeo_media_sync_duration',
+			'_vimeo_media_sync_privacy',
+			'_vimeo_media_sync_files',
+			'_vimeo_media_sync_response',
 		);
 
 		foreach ( $keys as $key ) {

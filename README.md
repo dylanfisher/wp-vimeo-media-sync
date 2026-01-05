@@ -36,6 +36,7 @@ You can also enable automatic deletion of Vimeo videos when a WordPress attachme
 3. Open the attachment details to see Vimeo status, IDs, and progress.
 4. Use the “Refresh status” button to manually recheck processing.
 5. Use the dashboard table to sync missing videos in bulk or per row; the table includes status, progress, and error context.
+6. If you switch Vimeo accounts, use “Clear Vimeo metadata” in the dashboard to reset attachment sync data before re-uploading.
 
 ## Attachment Metadata
 The plugin stores Vimeo metadata on attachments using post meta keys:
