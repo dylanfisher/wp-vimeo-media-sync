@@ -84,11 +84,14 @@ Set `WP_DEBUG` to `true` to log Vimeo sync progress and API calls to the PHP err
 ## Updates (GitHub Releases)
 This plugin bundles the [Plugin Update Checker](https://github.com/YahnisElsts/plugin-update-checker) library at `includes/plugin-update-checker/` and initializes it in `vimeo-media-sync.php` to deliver updates from GitHub Releases.
 
+Automatic releases:
+- A GitHub Actions workflow (`.github/workflows/release-on-version.yml`) creates a published release when the `Version` header in `vimeo-media-sync.php` changes on `main`.
+- It tags the release as `v1.2.3` and auto-generates release notes.
+
 Release checklist:
 1. Update the `Version` header in `vimeo-media-sync.php`.
-2. Create a new GitHub Release for `https://github.com/dylanfisher/wp-vimeo-media-sync`.
-3. Use a tag higher than the plugin `Version` (for example, `1.0.1` or `v1.0.1`).
-4. Avoid marking the release as a pre-release (pre-releases are ignored).
+2. Merge/push the change to `main`.
+3. The workflow will create the tag and GitHub Release automatically (as long as that tag does not already exist).
 
 ## Notes
 - Vimeo ownership is tied to the access token owner. Use a team account token if you need uploads to land in a team account.
