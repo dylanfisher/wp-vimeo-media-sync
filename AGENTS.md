@@ -16,6 +16,7 @@ This plugin runs directly in WordPress; there is no build step in the repo.
 
 ## Tracking changes in README
 - Make sure any code changes are accurately reflected in the README.
+- Update CHANGELOG.md for user-visible changes.
 
 ## Coding Style & Naming Conventions
 - Follow WordPress PHP coding standards: tabs for indentation, braces on the next line, and spaces inside parentheses.

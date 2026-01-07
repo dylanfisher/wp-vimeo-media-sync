@@ -7,7 +7,7 @@ Synchronize WordPress video uploads to Vimeo with resumable (tus) uploads and st
 - Automatic status polling with backoff until processing completes.
 - Attachment-level Vimeo metadata tracking.
 - Optional privacy override (unlisted/public/private) with automatic retry if Vimeo rejects it.
-- Dashboard tools to find and sync missing Vimeo uploads.
+- Dashboard table of all video attachments with pagination and tools to sync missing Vimeo uploads.
 - Optional delete-on-remove to remove Vimeo videos when WP attachments are deleted.
 
 ## Requirements
@@ -35,7 +35,7 @@ You can also enable automatic deletion of Vimeo videos when a WordPress attachme
 2. The plugin creates a Vimeo video via tus upload and adds it to the configured Vimeo folder.
 3. Open the attachment details to see Vimeo status, IDs, and progress.
 4. Use the “Refresh status” button to manually recheck processing.
-5. Use the dashboard table to sync missing videos in bulk or per row; the table includes status, progress, and error context.
+5. Use the dashboard table (paginated) to review all video attachments and sync missing videos in bulk or per row; the table includes status, progress, and error context.
 6. If you switch Vimeo accounts, use “Clear Vimeo metadata” in the dashboard to reset attachment sync data before re-uploading.
 
 ## Attachment Metadata

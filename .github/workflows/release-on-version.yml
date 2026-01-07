@@ -53,9 +53,31 @@ jobs:
             echo "exists=false" >> "$GITHUB_OUTPUT"
           fi
 
+      - name: Extract changelog
+        id: changelog
+        if: steps.version.outputs.changed == 'true' && steps.tag.outputs.exists == 'false'
+        run: |
+          version="v${{ steps.version.outputs.version }}"
+          notes=$(awk -v ver="## "ver '
+            $0 == ver {found=1; next}
+            found && /^## / {exit}
+            found {print}
+          ' CHANGELOG.md)
+          notes=$(printf "%s" "$notes" | sed '/^[[:space:]]*$/d')
+          if [ -z "$notes" ]; then
+            notes="No changelog entry found for $version."
+          fi
+          {
+            echo "body<<EOF"
+            echo "## $version"
+            echo "$notes"
+            echo "EOF"
+          } >> "$GITHUB_OUTPUT"
+
       - name: Create GitHub Release
         if: steps.version.outputs.changed == 'true' && steps.tag.outputs.exists == 'false'
         uses: softprops/action-gh-release@v1
         with:
           tag_name: v${{ steps.version.outputs.version }}
-          generate_release_notes: true
+          generate_release_notes: false
+          body: ${{ steps.changelog.outputs.body }}

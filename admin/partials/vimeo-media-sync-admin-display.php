@@ -51,7 +51,21 @@
 
 	<h2 class="title"><?php echo esc_html__( 'Sync Status', 'vimeo-media-sync' ); ?></h2>
 	<?php
-	$missing_attachments = $this->get_missing_vimeo_attachments( 10 );
+	$per_page = 20;
+	$page = isset( $_GET['vimeo_media_sync_page'] ) ? max( 1, absint( $_GET['vimeo_media_sync_page'] ) ) : 1;
+	$attachments_query = new WP_Query(
+		array(
+			'post_type'      => 'attachment',
+			'post_mime_type' => 'video',
+			'posts_per_page' => $per_page,
+			'paged'          => $page,
+			'post_status'    => 'inherit',
+			'orderby'        => 'date',
+			'order'          => 'DESC',
+		)
+	);
+	$attachments = $attachments_query->posts;
+	$missing_attachments = $this->get_missing_vimeo_attachments( 1 );
 	if ( isset( $_GET['synced'] ) ) :
 		?>
 		<p>
@@ -63,26 +77,28 @@
 			?>
 		</p>
 	<?php endif; ?>
-	<?php if ( empty( $missing_attachments ) ) : ?>
-		<p><?php echo esc_html__( 'All video attachments are synced.', 'vimeo-media-sync' ); ?></p>
-	<?php else : ?>
-		<table class="widefat striped vimeo-media-sync-table">
-			<thead>
+	<table class="widefat striped vimeo-media-sync-table">
+		<thead>
+			<tr>
+				<th><?php echo esc_html__( 'Video', 'vimeo-media-sync' ); ?></th>
+				<th><?php echo esc_html__( 'Date', 'vimeo-media-sync' ); ?></th>
+				<th><?php echo esc_html__( 'Author', 'vimeo-media-sync' ); ?></th>
+				<th><?php echo esc_html__( 'Vimeo ID', 'vimeo-media-sync' ); ?></th>
+				<th><?php echo esc_html__( 'Vimeo URI', 'vimeo-media-sync' ); ?></th>
+				<th><?php echo esc_html__( 'Vimeo Link', 'vimeo-media-sync' ); ?></th>
+				<th><?php echo esc_html__( 'Upload Progress', 'vimeo-media-sync' ); ?></th>
+				<th><?php echo esc_html__( 'Last Error', 'vimeo-media-sync' ); ?></th>
+				<th><?php echo esc_html__( 'Status', 'vimeo-media-sync' ); ?></th>
+				<th><?php echo esc_html__( 'Actions', 'vimeo-media-sync' ); ?></th>
+			</tr>
+		</thead>
+		<tbody>
+			<?php if ( empty( $attachments ) ) : ?>
 				<tr>
-					<th><?php echo esc_html__( 'Video', 'vimeo-media-sync' ); ?></th>
-					<th><?php echo esc_html__( 'Date', 'vimeo-media-sync' ); ?></th>
-					<th><?php echo esc_html__( 'Author', 'vimeo-media-sync' ); ?></th>
-					<th><?php echo esc_html__( 'Vimeo ID', 'vimeo-media-sync' ); ?></th>
-					<th><?php echo esc_html__( 'Vimeo URI', 'vimeo-media-sync' ); ?></th>
-					<th><?php echo esc_html__( 'Vimeo Link', 'vimeo-media-sync' ); ?></th>
-					<th><?php echo esc_html__( 'Upload Progress', 'vimeo-media-sync' ); ?></th>
-					<th><?php echo esc_html__( 'Last Error', 'vimeo-media-sync' ); ?></th>
-					<th><?php echo esc_html__( 'Status', 'vimeo-media-sync' ); ?></th>
-					<th><?php echo esc_html__( 'Actions', 'vimeo-media-sync' ); ?></th>
+					<td colspan="10"><?php echo esc_html__( 'No video attachments found.', 'vimeo-media-sync' ); ?></td>
 				</tr>
-			</thead>
-			<tbody>
-				<?php foreach ( $missing_attachments as $attachment ) : ?>
+			<?php else : ?>
+				<?php foreach ( $attachments as $attachment ) : ?>
 					<?php $video_id = get_post_meta( $attachment->ID, '_vimeo_media_sync_video_id', true ); ?>
 					<?php $video_uri = get_post_meta( $attachment->ID, '_vimeo_media_sync_uri', true ); ?>
 					<?php $video_link = get_post_meta( $attachment->ID, '_vimeo_media_sync_link', true ); ?>
@@ -147,17 +163,97 @@
 						</td>
 					</tr>
 				<?php endforeach; ?>
-			</tbody>
-		</table>
+			<?php endif; ?>
+		</tbody>
+	</table>
+	<?php if ( $attachments_query->max_num_pages > 1 ) : ?>
+		<?php
+		$total_pages = (int) $attachments_query->max_num_pages;
+		$first_link = add_query_arg( 'vimeo_media_sync_page', 1 );
+		$prev_link = add_query_arg( 'vimeo_media_sync_page', max( 1, $page - 1 ) );
+		$next_link = add_query_arg( 'vimeo_media_sync_page', min( $total_pages, $page + 1 ) );
+		$last_link = add_query_arg( 'vimeo_media_sync_page', $total_pages );
+		?>
+		<div class="tablenav">
+			<div class="tablenav-pages">
+				<span class="pagination-links">
+					<?php if ( $page > 1 ) : ?>
+						<a class="first-page button" href="<?php echo esc_url( $first_link ); ?>">
+							<span class="screen-reader-text"><?php echo esc_html__( 'First page', 'vimeo-media-sync' ); ?></span>
+							<span aria-hidden="true">«</span>
+						</a>
+						<a class="prev-page button" href="<?php echo esc_url( $prev_link ); ?>">
+							<span class="screen-reader-text"><?php echo esc_html__( 'Previous page', 'vimeo-media-sync' ); ?></span>
+							<span aria-hidden="true">‹</span>
+						</a>
+					<?php else : ?>
+						<span class="tablenav-pages-navspan button disabled" aria-hidden="true">«</span>
+						<span class="tablenav-pages-navspan button disabled" aria-hidden="true">‹</span>
+					<?php endif; ?>
+					<span class="screen-reader-text"><?php echo esc_html__( 'Current Page', 'vimeo-media-sync' ); ?></span>
+					<span id="table-paging" class="paging-input">
+						<span class="tablenav-paging-text">
+							<?php
+							printf(
+								'%1$s of <span class="total-pages">%2$s</span>',
+								esc_html( $page ),
+								esc_html( $total_pages )
+							);
+							?>
+						</span>
+					</span>
+					<?php if ( $page < $total_pages ) : ?>
+						<a class="next-page button" href="<?php echo esc_url( $next_link ); ?>">
+							<span class="screen-reader-text"><?php echo esc_html__( 'Next page', 'vimeo-media-sync' ); ?></span>
+							<span aria-hidden="true">›</span>
+						</a>
+						<a class="last-page button" href="<?php echo esc_url( $last_link ); ?>">
+							<span class="screen-reader-text"><?php echo esc_html__( 'Last page', 'vimeo-media-sync' ); ?></span>
+							<span aria-hidden="true">»</span>
+						</a>
+					<?php else : ?>
+						<span class="tablenav-pages-navspan button disabled" aria-hidden="true">›</span>
+						<span class="tablenav-pages-navspan button disabled" aria-hidden="true">»</span>
+					<?php endif; ?>
+				</span>
+			</div>
+		</div>
+	<?php endif; ?>
+	<?php if ( ! empty( $missing_attachments ) ) : ?>
 		<p>
 			<button type="button" class="button vimeo-media-sync-all">
 				<?php echo esc_html__( 'Sync missing videos', 'vimeo-media-sync' ); ?>
 			</button>
 		</p>
+	<?php else: ?>
+		<br>
 	<?php endif; ?>
-	<details class="vimeo-media-sync-danger-zone">
+
+	<h2 class="title"><?php echo esc_html__( 'Quick Checks', 'vimeo-media-sync' ); ?></h2>
+	<ul>
+		<li><?php echo esc_html__( 'Confirm Vimeo credentials are configured in your environment.', 'vimeo-media-sync' ); ?></li>
+		<li><?php echo esc_html__( 'Verify recent uploads appear in Vimeo and on public pages.', 'vimeo-media-sync' ); ?></li>
+		<li><?php echo esc_html__( 'Review admin and public logs for sync errors.', 'vimeo-media-sync' ); ?></li>
+	</ul>
+
+	<h2 class="title"><?php echo esc_html__( 'Helpful Links', 'vimeo-media-sync' ); ?></h2>
+	<ul>
+		<li>
+			<a href="<?php echo esc_url( admin_url( 'upload.php' ) ); ?>">
+				<?php echo esc_html__( 'Media Library', 'vimeo-media-sync' ); ?>
+			</a>
+		</li>
+		<li>
+			<a href="https://vimeo.com/home" target="_blank">
+				<?php echo esc_html__( 'Vimeo Account', 'vimeo-media-sync' ); ?>
+			</a>
+		</li>
+	</ul>
+
+	<br>
+	<details>
 		<summary>
-			<span style="cursor: pointer;"><?php echo esc_html__( 'Advanced Settings', 'vimeo-media-sync' ); ?></span>
+			<span style="cursor: pointer;"><?php echo esc_html__( 'Advanced Operations', 'vimeo-media-sync' ); ?></span>
 		</summary>
 		<p>
 			<?php echo esc_html__( 'Use the refresh button to pull the latest Vimeo metadata for all synced video attachments.', 'vimeo-media-sync' ); ?>
@@ -200,25 +296,4 @@
 			<span class="vimeo-media-sync-clear-meta-status vimeo-media-sync-inline-status" aria-live="polite"></span>
 		</p>
 	</details>
-
-	<h2 class="title"><?php echo esc_html__( 'Quick Checks', 'vimeo-media-sync' ); ?></h2>
-	<ul>
-		<li><?php echo esc_html__( 'Confirm Vimeo credentials are configured in your environment.', 'vimeo-media-sync' ); ?></li>
-		<li><?php echo esc_html__( 'Verify recent uploads appear in Vimeo and on public pages.', 'vimeo-media-sync' ); ?></li>
-		<li><?php echo esc_html__( 'Review admin and public logs for sync errors.', 'vimeo-media-sync' ); ?></li>
-	</ul>
-
-	<h2 class="title"><?php echo esc_html__( 'Helpful Links', 'vimeo-media-sync' ); ?></h2>
-	<ul>
-		<li>
-			<a href="<?php echo esc_url( admin_url( 'upload.php' ) ); ?>">
-				<?php echo esc_html__( 'Media Library', 'vimeo-media-sync' ); ?>
-			</a>
-		</li>
-		<li>
-			<a href="<?php echo esc_url( admin_url( 'options-general.php' ) ); ?>">
-				<?php echo esc_html__( 'WordPress Settings', 'vimeo-media-sync' ); ?>
-			</a>
-		</li>
-	</ul>
 </div>

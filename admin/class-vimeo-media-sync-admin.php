@@ -325,8 +325,8 @@ class Vimeo_Media_Sync_Admin {
 		$existing_uri = get_post_meta( $post_id, '_vimeo_media_sync_uri', true );
 		$existing_id  = get_post_meta( $post_id, '_vimeo_media_sync_video_id', true );
 		$current_status = get_post_meta( $post_id, '_vimeo_media_sync_status', true );
-		if ( ! $force && ( '' !== $existing_uri || '' !== $existing_id ) && 'error' !== $current_status ) {
-			$this->log_debug( sprintf( 'Skipping Vimeo upload for attachment %d (already synced)', $post_id ) );
+		if ( '' !== $existing_uri || '' !== $existing_id ) {
+			$this->log_debug( sprintf( 'Skipping Vimeo upload for attachment %d (existing Vimeo metadata)', $post_id ) );
 			return;
 		}
 
