@@ -12,7 +12,7 @@ Synchronize WordPress video uploads to Vimeo with resumable (tus) uploads and st
 
 ## Requirements
 - WordPress 6.x
-- Vimeo personal access token with scopes: `public`, `private`, `create`, `edit`, `delete`, `upload`, `stats`, `video files`
+- Vimeo personal [access token](https://developer.vimeo.com/api/guides/start#generate-access-token) with scopes: `public`, `private`, `create`, `edit`, `delete`, `upload`, `stats`, `video files`
 
 ## Installation
 1. Copy this plugin into `wp-content/plugins/vimeo-media-sync`.
