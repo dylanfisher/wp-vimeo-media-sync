@@ -13,6 +13,7 @@ Synchronize WordPress video uploads to Vimeo with resumable (tus) uploads and st
 ## Requirements
 - WordPress 6.x
 - Vimeo personal [access token](https://developer.vimeo.com/api/guides/start#generate-access-token) with scopes: `public`, `private`, `create`, `edit`, `delete`, `upload`, `stats`, `video files`
+- Reachable WordPress cron (`wp-cron.php`) or a real server cron runner.
 
 ## Installation
 1. Copy this plugin into `wp-content/plugins/vimeo-media-sync`.
@@ -81,6 +82,35 @@ $files = Vimeo_Media_Sync_Helpers::get_vimeo_direct_files( $attachment_id );
 ## Debugging
 Set `WP_DEBUG` to `true` to log Vimeo sync progress and API calls to the PHP error log.
 
+## WP-Cron and Basic Auth
+Background Vimeo uploads advance through scheduled WordPress cron events. If `wp-cron.php` is blocked by Basic Auth, `.htaccess`, a firewall, or a security plugin, uploads may appear to pause until someone clicks “Refresh status”.
+
+For Basic Auth-protected environments, either allow unauthenticated requests to `wp-cron.php` or run cron events with a real server cron job.
+
+Example `.htaccess` exception:
+```
+<Files "wp-cron.php">
+	Satisfy Any
+	Allow from all
+	Require all granted
+</Files>
+```
+
+If you disable WP-Cron in `wp-config.php`:
+```
+define( 'DISABLE_WP_CRON', true );
+```
+
+add a system cron job instead:
+```
+* * * * * cd /path/to/wordpress && wp cron event run --due-now --quiet
+```
+
+As an HTTP fallback, include Basic Auth credentials in the cron request:
+```
+* * * * * curl -s -u username:password https://example.com/wp-cron.php?doing_wp_cron >/dev/null 2>&1
+```
+
 ## Updates (GitHub Releases)
 This plugin bundles the [Plugin Update Checker](https://github.com/YahnisElsts/plugin-update-checker) library at `includes/plugin-update-checker/` and initializes it in `vimeo-media-sync.php` to deliver updates from GitHub Releases.
 
@@ -95,7 +125,8 @@ Release checklist:
 
 ## Notes
 - Vimeo ownership is tied to the access token owner. Use a team account token if you need uploads to land in a team account.
-- The plugin relies on WordPress cron for status polling. Ensure WP-Cron is running on your site.
+- The plugin relies on WordPress cron for status polling and resumable upload progress. Ensure WP-Cron is running and `wp-cron.php` is reachable, or configure a real server cron runner.
+- If a resumable Vimeo upload URL expires with a 401 token parsing error, the plugin resets metadata for that attachment and starts one new upload attempt.
 - Status polling continues for up to 6 hours after a video is marked ready to capture late-arriving transcode files.
 - Delete-on-remove only runs for video attachments that the plugin previously uploaded to Vimeo.
 - The plugin does not enqueue any public-facing scripts or styles.

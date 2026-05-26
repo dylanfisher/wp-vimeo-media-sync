@@ -16,8 +16,48 @@
 <div class="wrap">
 	<h1><?php echo esc_html__( 'Vimeo Media Sync Dashboard', 'vimeo-media-sync' ); ?></h1>
 	<p><?php echo esc_html__( 'Manage Vimeo sync status, background uploads, and playback settings for this site.', 'vimeo-media-sync' ); ?></p>
+	<?php $cron_health = $this->get_wp_cron_health(); ?>
+	<?php if ( empty( $cron_health['reachable'] ) ) : ?>
+		<div class="notice notice-warning">
+			<p>
+				<strong><?php echo esc_html__( 'WP-Cron is not reachable.', 'vimeo-media-sync' ); ?></strong>
+				<?php
+				if ( ! empty( $cron_health['message'] ) ) {
+					printf(
+						/* translators: %s: WP-Cron HTTP status or error message. */
+						esc_html__( 'Last check: %s.', 'vimeo-media-sync' ),
+						esc_html( $cron_health['message'] )
+					);
+					echo ' ';
+				}
+				echo esc_html__( 'Background Vimeo uploads may stall until someone clicks Refresh status. If this site is protected by Basic Auth, allow unauthenticated access to wp-cron.php in .htaccess or run cron events with a real server cron job.', 'vimeo-media-sync' );
+				if ( ! empty( $cron_health['disabled'] ) ) {
+					echo ' ';
+					echo esc_html__( 'DISABLE_WP_CRON is enabled, which is OK only when an external cron runner is configured.', 'vimeo-media-sync' );
+				}
+				?>
+			</p>
+		</div>
+	<?php endif; ?>
 
 	<h2 class="title"><?php echo esc_html__( 'Configuration', 'vimeo-media-sync' ); ?></h2>
+	<?php $token_detected = '' !== $this->get_access_token(); ?>
+	<p>
+		<?php
+		$status = $token_detected ? __( 'Detected', 'vimeo-media-sync' ) : __( '⛔️ Missing', 'vimeo-media-sync' );
+		printf(
+			'%s: %s',
+			esc_html__( 'Token status', 'vimeo-media-sync' ),
+			esc_html( $status )
+		);
+		?>
+	</p>
+	<?php if ( $token_detected ) : ?>
+		<details>
+			<summary>
+				<span style="cursor: pointer;"><?php echo esc_html__( 'Configuration notes', 'vimeo-media-sync' ); ?></span>
+			</summary>
+	<?php endif; ?>
 	<p>
 		<?php echo esc_html__( 'Set the Vimeo personal access token via wp-config.php or an environment variable.', 'vimeo-media-sync' ); ?>
 	</p>
@@ -31,16 +71,9 @@
 		);
 		?>
 	</p>
-	<p>
-		<?php
-		$status = ( '' !== $this->get_access_token() ) ? __( 'Detected', 'vimeo-media-sync' ) : __( '⛔️ Missing', 'vimeo-media-sync' );
-		printf(
-			'%s: %s',
-			esc_html__( 'Token status', 'vimeo-media-sync' ),
-			esc_html( $status )
-		);
-		?>
-	</p>
+	<?php if ( $token_detected ) : ?>
+		</details>
+	<?php endif; ?>
 	<form method="post" action="options.php">
 		<?php
 		settings_fields( 'vimeo-media-sync' );

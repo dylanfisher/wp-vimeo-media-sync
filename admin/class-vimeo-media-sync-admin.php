@@ -312,8 +312,9 @@ class Vimeo_Media_Sync_Admin {
 	 * @since    1.0.0
 	 * @param    int  $post_id Attachment ID.
 	 * @param    bool $force Force resync even if existing data exists.
+	 * @param    bool $retried_expired_upload Whether an expired upload retry has already run.
 	 */
-	public function maybe_upload_video_to_vimeo( $post_id, $force = false ) {
+	public function maybe_upload_video_to_vimeo( $post_id, $force = false, $retried_expired_upload = false ) {
 		$post = get_post( $post_id );
 		if ( ! $this->is_video_attachment( $post ) ) {
 			return;
@@ -325,6 +326,16 @@ class Vimeo_Media_Sync_Admin {
 		$existing_uri = get_post_meta( $post_id, '_vimeo_media_sync_uri', true );
 		$existing_id  = get_post_meta( $post_id, '_vimeo_media_sync_video_id', true );
 		$current_status = get_post_meta( $post_id, '_vimeo_media_sync_status', true );
+		$current_error = get_post_meta( $post_id, '_vimeo_media_sync_error', true );
+
+		if ( $force && $this->is_expired_upload_token_error( $current_error ) ) {
+			$this->log_debug( sprintf( 'Resetting stored expired Vimeo upload for attachment %d', $post_id ) );
+			$this->reset_vimeo_upload_meta( $post_id );
+			$existing_uri = '';
+			$existing_id = '';
+			$current_status = '';
+		}
+
 		if ( '' !== $existing_uri || '' !== $existing_id ) {
 			$this->log_debug( sprintf( 'Skipping Vimeo upload for attachment %d (existing Vimeo metadata)', $post_id ) );
 			return;
@@ -387,6 +398,13 @@ class Vimeo_Media_Sync_Admin {
 			$this->update_vimeo_status( $post_id, 'uploading', '' );
 			$upload_result = $this->resume_tus_upload( $post_id, $upload_link, $upload_offset, $upload_size );
 			if ( ! $upload_result['success'] ) {
+				if ( ! $retried_expired_upload && $this->is_expired_upload_token_error( $upload_result['error'] ) ) {
+					$this->log_debug( sprintf( 'Resetting expired Vimeo upload for attachment %d', $post_id ) );
+					$this->reset_vimeo_upload_meta( $post_id );
+					$this->maybe_upload_video_to_vimeo( $post_id, true, true );
+					return;
+				}
+
 				$this->update_vimeo_status( $post_id, 'uploading', $upload_result['error'] );
 				return;
 			}
@@ -453,6 +471,13 @@ class Vimeo_Media_Sync_Admin {
 
 		$upload_result = $this->resume_tus_upload( $post_id, $upload_link, 0, $size );
 		if ( ! $upload_result['success'] ) {
+			if ( ! $retried_expired_upload && $this->is_expired_upload_token_error( $upload_result['error'] ) ) {
+				$this->log_debug( sprintf( 'Resetting expired Vimeo upload for attachment %d', $post_id ) );
+				$this->reset_vimeo_upload_meta( $post_id );
+				$this->maybe_upload_video_to_vimeo( $post_id, true, true );
+				return;
+			}
+
 			$this->update_vimeo_status( $post_id, 'uploading', $upload_result['error'] );
 			return;
 		}
@@ -607,6 +632,13 @@ class Vimeo_Media_Sync_Admin {
 			if ( $upload_link && $upload_size > 0 && $upload_offset < $upload_size ) {
 				$upload_result = $this->resume_tus_upload( $attachment_id, $upload_link, $upload_offset, $upload_size );
 				if ( ! $upload_result['success'] ) {
+					if ( $this->is_expired_upload_token_error( $upload_result['error'] ) ) {
+						$this->log_debug( sprintf( 'Resetting expired Vimeo upload for attachment %d', $attachment_id ) );
+						$this->reset_vimeo_upload_meta( $attachment_id );
+						$this->maybe_upload_video_to_vimeo( $attachment_id, true, true );
+						continue;
+					}
+
 					$this->update_vimeo_status( $attachment_id, 'uploading', $upload_result['error'] );
 					$this->log_debug( sprintf( 'Tus upload failed for attachment %d: %s', $attachment_id, $upload_result['error'] ) );
 					continue;
@@ -668,6 +700,55 @@ class Vimeo_Media_Sync_Admin {
 	 */
 	public function display_plugin_dashboard() {
 		require_once plugin_dir_path( __FILE__ ) . 'partials/vimeo-media-sync-admin-display.php';
+	}
+
+	/**
+	 * Check whether WordPress cron is reachable over HTTP.
+	 *
+	 * @since    1.0.0
+	 * @return   array
+	 */
+	private function get_wp_cron_health() {
+		$cached = get_transient( 'vimeo_media_sync_wp_cron_health' );
+		if ( is_array( $cached ) ) {
+			return $cached;
+		}
+
+		$cron_url = site_url( 'wp-cron.php?doing_wp_cron=' . rawurlencode( 'vimeo_media_sync_health_' . time() ) );
+		$response = wp_remote_get(
+			$cron_url,
+			array(
+				'timeout'     => 5,
+				'redirection' => 2,
+				'sslverify'   => apply_filters( 'https_local_ssl_verify', false ),
+				'headers'     => array(
+					'Cache-Control' => 'no-cache',
+				),
+			)
+		);
+
+		$health = array(
+			'reachable' => false,
+			'status'    => 0,
+			'message'   => '',
+			'disabled'  => defined( 'DISABLE_WP_CRON' ) && DISABLE_WP_CRON,
+		);
+
+		if ( is_wp_error( $response ) ) {
+			$health['message'] = $response->get_error_message();
+			set_transient( 'vimeo_media_sync_wp_cron_health', $health, 5 * MINUTE_IN_SECONDS );
+			return $health;
+		}
+
+		$status = (int) wp_remote_retrieve_response_code( $response );
+		$health['status'] = $status;
+		$health['reachable'] = $status >= 200 && $status < 400;
+		if ( ! $health['reachable'] ) {
+			$health['message'] = sprintf( 'HTTP %d', $status );
+		}
+
+		set_transient( 'vimeo_media_sync_wp_cron_health', $health, 5 * MINUTE_IN_SECONDS );
+		return $health;
 	}
 
 	/**
@@ -1375,6 +1456,27 @@ class Vimeo_Media_Sync_Admin {
 		foreach ( $keys as $key ) {
 			delete_post_meta( $post_id, $key );
 		}
+	}
+
+	/**
+	 * Detect expired Vimeo tus upload URL token errors.
+	 *
+	 * @since    1.0.0
+	 * @param    string $error Error message.
+	 * @return   bool
+	 */
+	private function is_expired_upload_token_error( $error ) {
+		if ( '' === $error ) {
+			return false;
+		}
+
+		$error = strtolower( $error );
+		return false !== strpos( $error, 'status' )
+			&& false !== strpos( $error, '401' )
+			&& false !== strpos( $error, 'error parsing token' )
+			&& false !== strpos( $error, 'invalid payload claim' )
+			&& false !== strpos( $error, 'exp' )
+			&& false !== strpos( $error, 'time validation failed' );
 	}
 
 	/**
