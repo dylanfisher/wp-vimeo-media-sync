@@ -136,13 +136,14 @@ As an HTTP fallback, include Basic Auth credentials in the cron request:
 This plugin bundles the [Plugin Update Checker](https://github.com/YahnisElsts/plugin-update-checker) library at `includes/plugin-update-checker/` and initializes it in `vimeo-media-sync.php` to deliver updates from GitHub Releases.
 
 Automatic releases:
-- A GitHub Actions workflow (`.github/workflows/release-on-version.yml`) creates a published release when the `Version` header in `vimeo-media-sync.php` changes on `main`.
+- A GitHub Actions workflow (`.github/workflows/release-on-version.yml`) runs on every push to `main`, reads the `Version` header in `vimeo-media-sync.php`, and creates a published release when no tag matches that version yet.
 - It tags the release as `v1.2.3` and auto-generates release notes.
+- Because the check is against existing tags rather than the previous commit, it does not matter which commit in a push carries the bump.
 
 Release checklist:
 1. Update the `Version` header in `vimeo-media-sync.php`.
 2. Merge/push the change to `main`.
-3. The workflow will create the tag and GitHub Release automatically (as long as that tag does not already exist).
+3. Push to `main`. The workflow will create the tag and GitHub Release automatically (as long as that tag does not already exist).
 
 ## Notes
 - Vimeo ownership is tied to the access token owner. Use a team account token if you need uploads to land in a team account.

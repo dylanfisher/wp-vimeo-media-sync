@@ -1,6 +1,7 @@
 # Changelog
 
 ## v1.5.0
+- Fix the release workflow missing a version bump that was not in the final commit of a push, by checking the existing tags instead of diffing against the previous commit.
 - Send resumable upload chunks until the request's time budget is spent instead of stopping after a fixed 3 chunks, so large videos upload far faster.
 - Resume in-progress uploads after a short delay rather than reusing the 2 minute transcode polling backoff.
 - Bring forward an already-scheduled status check when a sooner one is requested.

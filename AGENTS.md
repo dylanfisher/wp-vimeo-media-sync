@@ -19,11 +19,11 @@ This plugin runs directly in WordPress; there is no build step in the repo.
 - Update CHANGELOG.md for user-visible changes.
 
 ## Versioning
-The `Version` header in `vimeo-media-sync.php` is the single source of truth. A GitHub Actions workflow cuts a release when that header changes on `main`, but only if the matching tag does not already exist, so a stale header means the change silently never ships.
+The `Version` header in `vimeo-media-sync.php` is the single source of truth. On every push to `main` a GitHub Actions workflow reads that header and cuts a release if no matching tag exists yet, so leaving the header on an already-tagged version means the change never ships.
 
 - Run `git tag -l` before choosing a version. Never reuse a version that is already tagged.
 - If the current header is already tagged, the change belongs in the next version: bump the header rather than adding to the shipped one.
-- Bump the header in the same commit as the change it ships.
+- Bump the header in the same commit as the change it ships. The workflow compares against tags rather than the previous commit, so a bump is still picked up when it is not the last commit in a push.
 - Add a matching `## vX.Y.Z` section to CHANGELOG.md. Every released version should have one; do not append to a section that has already shipped.
 - Use the version being released in `@since` docblock tags on new functions, constants, and filters. This is the bumped version, not the header's previous value.
 - Follow semver: patch for fixes, minor for new behavior or filters, major for breaking changes.
