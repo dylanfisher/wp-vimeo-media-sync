@@ -23,6 +23,22 @@
 class Vimeo_Media_Sync_Admin {
 
 	/**
+	 * Hard ceiling, in seconds, on how long one request may spend sending tus chunks.
+	 *
+	 * @since    1.5.0
+	 * @var      float
+	 */
+	const UPLOAD_TIME_BUDGET_CEILING = 120.0;
+
+	/**
+	 * Delay, in seconds, before resuming an upload that still has bytes to send.
+	 *
+	 * @since    1.5.0
+	 * @var      int
+	 */
+	const UPLOAD_POLL_DELAY = 30;
+
+	/**
 	 * The ID of this plugin.
 	 *
 	 * @since    1.0.0
@@ -413,7 +429,7 @@ class Vimeo_Media_Sync_Admin {
 				$this->update_vimeo_status( $post_id, 'processing', '' );
 			}
 
-			$this->schedule_status_check( $post_id, 2 * MINUTE_IN_SECONDS );
+			$this->schedule_status_check( $post_id, $upload_result['completed'] ? 2 * MINUTE_IN_SECONDS : $this->get_upload_poll_delay() );
 			return;
 		}
 
@@ -487,7 +503,7 @@ class Vimeo_Media_Sync_Admin {
 		}
 
 		$this->log_debug( sprintf( 'Vimeo tus upload started for attachment %d', $post_id ) );
-		$this->schedule_status_check( $post_id, 2 * MINUTE_IN_SECONDS );
+		$this->schedule_status_check( $post_id, $upload_result['completed'] ? 2 * MINUTE_IN_SECONDS : $this->get_upload_poll_delay() );
 	}
 
 	/**
@@ -646,7 +662,7 @@ class Vimeo_Media_Sync_Admin {
 
 				if ( ! $upload_result['completed'] ) {
 					$this->update_vimeo_status( $attachment_id, 'uploading', '' );
-					$this->schedule_status_check( $attachment_id, 2 * MINUTE_IN_SECONDS );
+					$this->schedule_status_check( $attachment_id, $this->get_upload_poll_delay() );
 					continue;
 				}
 
@@ -1165,8 +1181,17 @@ class Vimeo_Media_Sync_Admin {
 
 		$timestamp = time() + (int) $delay_seconds;
 		$hook_args = array( (int) $post_id );
+		$scheduled = wp_next_scheduled( 'vimeo_media_sync_check_status', $hook_args );
 
-		if ( ! wp_next_scheduled( 'vimeo_media_sync_check_status', $hook_args ) ) {
+		// A pending check further out would otherwise swallow the short upload delay,
+		// so clear it and let the sooner one take its place.
+		if ( $scheduled && $scheduled > $timestamp ) {
+			$this->log_debug( sprintf( 'Bringing forward Vimeo status check for attachment %d', $post_id ) );
+			wp_unschedule_event( $scheduled, 'vimeo_media_sync_check_status', $hook_args );
+			$scheduled = false;
+		}
+
+		if ( ! $scheduled ) {
 			$this->log_debug( sprintf( 'Scheduling Vimeo status check for attachment %d', $post_id ) );
 			wp_schedule_single_event( $timestamp, 'vimeo_media_sync_check_status', $hook_args );
 		}
@@ -1480,6 +1505,69 @@ class Vimeo_Media_Sync_Admin {
 	}
 
 	/**
+	 * Determine how long a single invocation may spend sending tus chunks.
+	 *
+	 * Derived from PHP's max execution time so the loop stops well before the request
+	 * is killed. A value of 0 means no limit (typically WP-CLI or cron), which gets a
+	 * fixed ceiling instead of running unbounded.
+	 *
+	 * @since    1.5.0
+	 * @return   float Seconds available for sending chunks.
+	 */
+	private function get_upload_time_budget() {
+		$max_execution_time = (int) ini_get( 'max_execution_time' );
+
+		if ( $max_execution_time > 0 ) {
+			// Leave headroom for the rest of the request; never exceed the hard ceiling.
+			$budget = min( $max_execution_time * 0.6, self::UPLOAD_TIME_BUDGET_CEILING );
+		} else {
+			$budget = self::UPLOAD_TIME_BUDGET_CEILING;
+		}
+
+		/**
+		 * Filter the per-request time budget for sending tus chunks.
+		 *
+		 * @since 1.5.0
+		 * @param float $budget Seconds available for sending chunks.
+		 */
+		return (float) apply_filters( 'vimeo_media_sync_upload_time_budget', $budget );
+	}
+
+	/**
+	 * Delay before the next run of an upload that still has bytes to send.
+	 *
+	 * The upload leg is not waiting on Vimeo, it simply ran out of time budget, so it
+	 * uses a short delay instead of the transcode polling backoff.
+	 *
+	 * @since    1.5.0
+	 * @return   int Delay in seconds.
+	 */
+	private function get_upload_poll_delay() {
+		/**
+		 * Filter the delay before resuming an in-progress tus upload.
+		 *
+		 * @since 1.5.0
+		 * @param int $delay Delay in seconds.
+		 */
+		return (int) apply_filters( 'vimeo_media_sync_upload_poll_delay', self::UPLOAD_POLL_DELAY );
+	}
+
+	/**
+	 * Whether an attachment still has tus bytes waiting to be sent.
+	 *
+	 * @since    1.5.0
+	 * @param    int $post_id Attachment ID.
+	 * @return   bool
+	 */
+	private function has_pending_upload_bytes( $post_id ) {
+		$upload_link = get_post_meta( $post_id, '_vimeo_media_sync_upload_link', true );
+		$upload_size = (int) get_post_meta( $post_id, '_vimeo_media_sync_upload_size', true );
+		$upload_offset = (int) get_post_meta( $post_id, '_vimeo_media_sync_upload_offset', true );
+
+		return $upload_link && $upload_size > 0 && $upload_offset < $upload_size;
+	}
+
+	/**
 	 * Resume a tus upload for an attachment.
 	 *
 	 * @since    1.0.0
@@ -1517,8 +1605,8 @@ class Vimeo_Media_Sync_Admin {
 			);
 		}
 
-		$max_chunks = 3;
 		$chunk_size = 5 * MB_IN_BYTES;
+		$time_budget = $this->get_upload_time_budget();
 
 		if ( 0 !== fseek( $handle, $offset ) ) {
 			fclose( $handle );
@@ -1531,7 +1619,19 @@ class Vimeo_Media_Sync_Admin {
 		}
 
 		$chunks_sent = 0;
-		while ( $offset < $size && $chunks_sent < $max_chunks ) {
+		$started_at = microtime( true );
+		$slowest_chunk = 0.0;
+
+		// Keep sending chunks until this request's time budget is nearly spent rather
+		// than stopping after a fixed chunk count. The first chunk always runs so every
+		// invocation makes forward progress, and each later chunk only starts when there
+		// is room for another one as slow as the slowest so far.
+		while ( $offset < $size ) {
+			if ( $chunks_sent > 0 && ( ( microtime( true ) - $started_at ) + $slowest_chunk ) > $time_budget ) {
+				$this->log_debug( sprintf( 'Pausing Vimeo tus upload for attachment %d after %d chunk(s): time budget reached', $post_id, $chunks_sent ) );
+				break;
+			}
+
 			$length = min( $chunk_size, $size - $offset );
 			$chunk = fread( $handle, $length );
 			if ( false === $chunk || '' === $chunk ) {
@@ -1544,7 +1644,9 @@ class Vimeo_Media_Sync_Admin {
 				);
 			}
 
+			$chunk_started = microtime( true );
 			$response = $client->tus_patch( $upload_link, $chunk, $offset );
+			$slowest_chunk = max( $slowest_chunk, microtime( true ) - $chunk_started );
 			if ( ! $response['success'] ) {
 				fclose( $handle );
 				return array(
@@ -1566,7 +1668,23 @@ class Vimeo_Media_Sync_Admin {
 				);
 			}
 
+			// Vimeo is authoritative on the offset. Re-seek whenever it disagrees with
+			// where the read pointer landed, which matters now that a single invocation
+			// can send many chunks back to back.
+			$expected_offset = $offset + strlen( $chunk );
 			$offset = $new_offset;
+
+			if ( $new_offset !== $expected_offset && 0 !== fseek( $handle, $new_offset ) ) {
+				fclose( $handle );
+				update_post_meta( $post_id, '_vimeo_media_sync_upload_offset', $offset );
+				return array(
+					'success'   => false,
+					'completed' => false,
+					'offset'    => $offset,
+					'error'     => 'Unable to seek attachment file.',
+				);
+			}
+
 			update_post_meta( $post_id, '_vimeo_media_sync_upload_offset', $offset );
 			$chunks_sent++;
 		}
@@ -1591,6 +1709,12 @@ class Vimeo_Media_Sync_Admin {
 	 * @return   int Delay in seconds.
 	 */
 	private function calculate_poll_delay( $attachment, $status, $transcode_status ) {
+		// An upload with bytes still queued locally is waiting on us, not on Vimeo, so
+		// it resumes on the short upload delay rather than the transcode backoff.
+		if ( $this->has_pending_upload_bytes( $attachment->ID ) ) {
+			return $this->get_upload_poll_delay();
+		}
+
 		if ( 'in_progress' === $transcode_status || in_array( $status, array( 'queued', 'uploading', 'processing' ), true ) ) {
 			return 2 * MINUTE_IN_SECONDS;
 		}

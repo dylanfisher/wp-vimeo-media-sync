@@ -82,6 +82,25 @@ $files = Vimeo_Media_Sync_Helpers::get_vimeo_direct_files( $attachment_id );
 ## Debugging
 Set `WP_DEBUG` to `true` to log Vimeo sync progress and API calls to the PHP error log.
 
+## Upload pacing
+Large videos are sent to Vimeo in 5 MB resumable (tus) chunks. Each run keeps sending chunks until it approaches its time budget, then schedules itself to resume shortly after, so upload speed is bounded by the server's connection and cron frequency rather than by a fixed chunk count.
+
+Two filters tune this:
+```
+// Seconds one request may spend sending chunks. Defaults to 60% of
+// max_execution_time, capped at 120. Unlimited execution time uses the cap.
+add_filter( 'vimeo_media_sync_upload_time_budget', function( $seconds ) {
+	return 90;
+} );
+
+// Seconds before resuming an upload that still has bytes to send. Defaults to 30.
+add_filter( 'vimeo_media_sync_upload_poll_delay', function( $seconds ) {
+	return 15;
+} );
+```
+
+Because uploads resume through cron, cron frequency sets the floor on how often a run can happen. A once-per-minute system cron is recommended for large files; see below.
+
 ## WP-Cron and Basic Auth
 Background Vimeo uploads advance through scheduled WordPress cron events. If `wp-cron.php` is blocked by Basic Auth, `.htaccess`, a firewall, or a security plugin, uploads may appear to pause until someone clicks “Refresh status”.
 
@@ -125,7 +144,7 @@ Release checklist:
 
 ## Notes
 - Vimeo ownership is tied to the access token owner. Use a team account token if you need uploads to land in a team account.
-- The plugin relies on WordPress cron for status polling and resumable upload progress. Ensure WP-Cron is running and `wp-cron.php` is reachable, or configure a real server cron runner.
+- The plugin relies on WordPress cron for status polling and resumable upload progress. Ensure WP-Cron is running and `wp-cron.php` is reachable, or configure a real server cron runner. Cron frequency directly limits upload throughput for large files.
 - If a resumable Vimeo upload URL expires with a 401 token parsing error, the plugin resets metadata for that attachment and starts one new upload attempt.
 - Status polling continues for up to 6 hours after a video is marked ready to capture late-arriving transcode files.
 - Delete-on-remove only runs for video attachments that the plugin previously uploaded to Vimeo.
