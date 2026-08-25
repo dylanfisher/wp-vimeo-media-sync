@@ -18,6 +18,17 @@ This plugin runs directly in WordPress; there is no build step in the repo.
 - Make sure any code changes are accurately reflected in the README.
 - Update CHANGELOG.md for user-visible changes.
 
+## Versioning
+The `Version` header in `vimeo-media-sync.php` is the single source of truth. A GitHub Actions workflow cuts a release when that header changes on `main`, but only if the matching tag does not already exist, so a stale header means the change silently never ships.
+
+- Run `git tag -l` before choosing a version. Never reuse a version that is already tagged.
+- If the current header is already tagged, the change belongs in the next version: bump the header rather than adding to the shipped one.
+- Bump the header in the same commit as the change it ships.
+- Add a matching `## vX.Y.Z` section to CHANGELOG.md. Every released version should have one; do not append to a section that has already shipped.
+- Use the version being released in `@since` docblock tags on new functions, constants, and filters. This is the bumped version, not the header's previous value.
+- Follow semver: patch for fixes, minor for new behavior or filters, major for breaking changes.
+- See the release checklist in README.md for the full flow.
+
 ## Coding Style & Naming Conventions
 - Follow WordPress PHP coding standards: tabs for indentation, braces on the next line, and spaces inside parentheses.
 - PHP classes use `Studly_Case` names (example: `Vimeo_Media_Sync_Public`).
@@ -31,7 +42,12 @@ There are no automated tests in this repository.
 - If you introduce new behavior, include a short manual test checklist in your PR description.
 
 ## Commit & Pull Request Guidelines
-No commit message conventions are established yet (no Git history). Use clear, imperative messages (e.g., `Add Vimeo upload hook`).
+Use clear, imperative subject lines describing the change (e.g., `Add Vimeo upload hook`), matching the existing history.
+
+- Do not commit, push, or tag unless asked to.
+- Keep a commit to one logical change, and include its README, CHANGELOG, and `Version` header updates in that same commit so a release is never missing its notes.
+- Run `php -l` on every changed PHP file before committing.
+- Note in the commit or PR whether the change was manually verified in WordPress, since this repo has no automated tests.
 - PRs should include a short summary, testing notes, and any relevant screenshots for UI changes.
 - Link related issues or tickets when applicable.
 
