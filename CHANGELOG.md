@@ -5,6 +5,8 @@
 - Resume in-progress uploads after a short delay rather than reusing the 2 minute transcode polling backoff.
 - Bring forward an already-scheduled status check when a sooner one is requested.
 - Re-seek the source file when Vimeo reports an unexpected upload offset.
+- Skip a resumable upload run when another process already holds that attachment's upload lock, avoiding concurrent resumes that collided with a 412.
+- Recover from a 412 offset mismatch by re-syncing with Vimeo and continuing the run instead of abandoning it.
 - Add the `vimeo_media_sync_upload_time_budget` and `vimeo_media_sync_upload_poll_delay` filters.
 
 ## v1.3.0

@@ -39,6 +39,25 @@ class Vimeo_Media_Sync_Admin {
 	const UPLOAD_POLL_DELAY = 30;
 
 	/**
+	 * Seconds before a held upload lock is treated as abandoned.
+	 *
+	 * Must exceed the longest possible run: the time budget ceiling plus a chunk
+	 * request that runs to its own timeout.
+	 *
+	 * @since    1.5.0
+	 * @var      int
+	 */
+	const UPLOAD_LOCK_TIMEOUT = 300;
+
+	/**
+	 * How many times one run may re-sync its offset with Vimeo before giving up.
+	 *
+	 * @since    1.5.0
+	 * @var      int
+	 */
+	const MAX_UPLOAD_RESYNCS = 3;
+
+	/**
 	 * The ID of this plugin.
 	 *
 	 * @since    1.0.0
@@ -1578,6 +1597,70 @@ class Vimeo_Media_Sync_Admin {
 	 * @return   array { success: bool, completed: bool, offset: int, error: string }
 	 */
 	private function resume_tus_upload( $post_id, $upload_link, $offset, $size ) {
+		// Concurrent resumes of the same attachment race each other to the same offset
+		// and one of them loses with a 412. Skipping the run is harmless: the caller
+		// reschedules, and whichever process holds the lock is already making progress.
+		if ( ! $this->acquire_upload_lock( $post_id ) ) {
+			$this->log_debug( sprintf( 'Skipping Vimeo tus upload for attachment %d: already in progress', $post_id ) );
+			return array(
+				'success'   => true,
+				'completed' => false,
+				'offset'    => $offset,
+				'error'     => '',
+			);
+		}
+
+		try {
+			return $this->run_tus_upload( $post_id, $upload_link, $offset, $size );
+		} finally {
+			$this->release_upload_lock( $post_id );
+		}
+	}
+
+	/**
+	 * Claim the upload lock for an attachment.
+	 *
+	 * Narrows the window for concurrent resumes rather than closing it outright, since
+	 * WordPress offers no portable atomic lock. A race that slips through is recovered
+	 * by the offset re-sync in run_tus_upload().
+	 *
+	 * @since    1.5.0
+	 * @param    int $post_id Attachment ID.
+	 * @return   bool Whether the lock was acquired.
+	 */
+	private function acquire_upload_lock( $post_id ) {
+		$key = 'vimeo_media_sync_lock_' . (int) $post_id;
+		$held = get_transient( $key );
+
+		if ( $held ) {
+			return false;
+		}
+
+		set_transient( $key, time(), self::UPLOAD_LOCK_TIMEOUT );
+		return true;
+	}
+
+	/**
+	 * Release the upload lock for an attachment.
+	 *
+	 * @since    1.5.0
+	 * @param    int $post_id Attachment ID.
+	 */
+	private function release_upload_lock( $post_id ) {
+		delete_transient( 'vimeo_media_sync_lock_' . (int) $post_id );
+	}
+
+	/**
+	 * Send tus chunks for an attachment. Callers should use resume_tus_upload().
+	 *
+	 * @since    1.5.0
+	 * @param    int    $post_id Attachment ID.
+	 * @param    string $upload_link Tus upload URL.
+	 * @param    int    $offset Current upload offset.
+	 * @param    int    $size Total file size.
+	 * @return   array { success: bool, completed: bool, offset: int, error: string }
+	 */
+	private function run_tus_upload( $post_id, $upload_link, $offset, $size ) {
 		$file_path = get_attached_file( $post_id );
 		if ( ! $file_path || ! file_exists( $file_path ) ) {
 			return array(
@@ -1621,6 +1704,7 @@ class Vimeo_Media_Sync_Admin {
 		$chunks_sent = 0;
 		$started_at = microtime( true );
 		$slowest_chunk = 0.0;
+		$resyncs = 0;
 
 		// Keep sending chunks until this request's time budget is nearly spent rather
 		// than stopping after a fixed chunk count. The first chunk always runs so every
@@ -1647,6 +1731,22 @@ class Vimeo_Media_Sync_Admin {
 			$chunk_started = microtime( true );
 			$response = $client->tus_patch( $upload_link, $chunk, $offset );
 			$slowest_chunk = max( $slowest_chunk, microtime( true ) - $chunk_started );
+
+			// A 412 means our offset no longer matches Vimeo's, usually because another
+			// process advanced it. Vimeo is authoritative, so re-sync and carry on rather
+			// than throwing away the rest of this run's time budget.
+			if ( ! $response['success'] && 412 === (int) $response['status'] && $resyncs < self::MAX_UPLOAD_RESYNCS ) {
+				$resyncs++;
+				$head = $client->tus_get_offset( $upload_link );
+
+				if ( $head['success'] && (int) $head['offset'] >= $offset && 0 === fseek( $handle, (int) $head['offset'] ) ) {
+					$offset = (int) $head['offset'];
+					update_post_meta( $post_id, '_vimeo_media_sync_upload_offset', $offset );
+					$this->log_debug( sprintf( 'Re-synced Vimeo tus offset for attachment %d to %d', $post_id, $offset ) );
+					continue;
+				}
+			}
+
 			if ( ! $response['success'] ) {
 				fclose( $handle );
 				return array(

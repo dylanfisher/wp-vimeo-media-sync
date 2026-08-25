@@ -99,6 +99,8 @@ add_filter( 'vimeo_media_sync_upload_poll_delay', function( $seconds ) {
 } );
 ```
 
+Only one process uploads a given attachment at a time. Clicking “Refresh status” while a cron run is mid-upload is safe: the second run sees the lock and returns, and the scheduled run continues uninterrupted. If Vimeo ever reports an offset mismatch, the plugin re-syncs to Vimeo's offset and carries on.
+
 Because uploads resume through cron, cron frequency sets the floor on how often a run can happen. A once-per-minute system cron is recommended for large files; see below.
 
 ## WP-Cron and Basic Auth
